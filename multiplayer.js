@@ -469,7 +469,12 @@ class MultiplayerManager {
             gameState.roundState = 'playing';
         }
         
-        // Save to database
+        // Apply locally and render immediately
+        this.currentGame.game_state = gameState;
+        try { console.debug('[MP] rollState', playerSide, selectedState); } catch (e) {}
+        this.updateGameUI(gameState);
+        
+        // Save to database (best-effort)
         await this.updateGameState(gameState);
         // Broadcast to peer
         this.sendGameState();
@@ -517,7 +522,12 @@ class MultiplayerManager {
             }
         }
         
-        // Save to database
+        // Apply locally and render immediately
+        this.currentGame.game_state = gameState;
+        try { console.debug('[MP] selectCategory', playerSide, categoryName, { score }); } catch (e) {}
+        this.updateGameUI(gameState);
+        
+        // Save to database (best-effort)
         await this.updateGameState(gameState);
         // Broadcast to peer
         this.sendGameState();

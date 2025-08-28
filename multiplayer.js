@@ -9,6 +9,7 @@ class MultiplayerManager {
         this.realTimeSubscriptions = [];
         this.heartbeatInterval = null;
         this.pollInterval = null;
+        this.gameChannel = null;
         
         this.initializeMultiplayer();
     }
@@ -360,6 +361,7 @@ class MultiplayerManager {
             this.currentGame = data;
             this.showMultiplayerGame();
             this.initializeGameState();
+            this.joinGameChannel(this.currentGame.id);
 
             // Mark current user as busy/in-game
             try {
@@ -444,6 +446,8 @@ class MultiplayerManager {
         
         // Save to database
         await this.updateGameState(gameState);
+        // Broadcast to peer
+        this.sendGameState();
     }
     
     async selectCategory(playerSide, categoryName) {
@@ -490,6 +494,8 @@ class MultiplayerManager {
         
         // Save to database
         await this.updateGameState(gameState);
+        // Broadcast to peer
+        this.sendGameState();
     }
     
     async updateGameState(gameState) {
@@ -909,6 +915,8 @@ class MultiplayerManager {
                     url.searchParams.set('gameId', String(this.currentGame.id));
                     window.history.replaceState({}, '', url.toString());
                 } catch (e) {}
+                // Join broadcast channel
+                this.joinGameChannel(this.currentGame.id);
             }
             return;
         }
@@ -917,6 +925,42 @@ class MultiplayerManager {
             this.currentGame = payload.new;
             this.updateGameUI(payload.new.game_state);
         }
+    }
+
+    joinGameChannel(gameId) {
+        if (!supabase) return;
+        if (this.gameChannel) {
+            try { this.gameChannel.unsubscribe(); } catch (e) {}
+            this.gameChannel = null;
+        }
+        const channelName = `game:${gameId}`;
+        this.gameChannel = supabase.channel(channelName, { config: { broadcast: { self: false } } });
+        this.gameChannel.on('broadcast', { event: 'state' }, ({ payload }) => {
+            if (!this.currentGame || this.currentGame.id !== gameId) return;
+            if (payload && payload.game_state) {
+                this.currentGame.game_state = payload.game_state;
+                this.updateGameUI(payload.game_state);
+            }
+        });
+        this.gameChannel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                if (this.currentGame && this.currentGame.game_state) {
+                    this.sendGameState();
+                }
+            }
+        });
+    }
+
+    sendGameState() {
+        try {
+            if (this.gameChannel && this.currentGame) {
+                this.gameChannel.send({
+                    type: 'broadcast',
+                    event: 'state',
+                    payload: { game_state: this.currentGame.game_state }
+                });
+            }
+        } catch (e) {}
     }
     
     showNotification(message, type = 'info') {
@@ -958,6 +1002,11 @@ class MultiplayerManager {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
             this.pollInterval = null;
+        }
+        // Leave game broadcast channel
+        if (this.gameChannel) {
+            try { this.gameChannel.unsubscribe(); } catch (e) {}
+            this.gameChannel = null;
         }
     }
 }

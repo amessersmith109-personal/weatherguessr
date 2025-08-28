@@ -20,10 +20,16 @@ class WeatherguessrGame {
 
     initializeEventListeners() {
         // Username screen
-        document.getElementById('startGameBtn').addEventListener('click', () => this.startGame());
+        document.getElementById('continueBtn').addEventListener('click', () => this.continueToMainMenu());
         document.getElementById('usernameInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.startGame();
+            if (e.key === 'Enter') this.continueToMainMenu();
         });
+
+        // Main menu
+        document.getElementById('singlePlayerBtn').addEventListener('click', () => this.startSinglePlayer());
+        document.getElementById('multiplayerBtn').addEventListener('click', () => this.startMultiplayer());
+        document.getElementById('leaderboardBtn').addEventListener('click', () => this.showLeaderboard());
+        document.getElementById('changeUsernameBtn').addEventListener('click', () => this.showUsernameScreen());
 
         // Game controls
         document.getElementById('rollBtn').addEventListener('click', () => this.rollState());
@@ -43,7 +49,7 @@ class WeatherguessrGame {
         document.getElementById('closeHistoryBtn').addEventListener('click', () => this.closeScoreHistory());
         
         // Multiplayer buttons (only when game is active)
-        document.getElementById('backToMainBtn').addEventListener('click', () => this.showUsernameScreen());
+        document.getElementById('backToMainBtn').addEventListener('click', () => this.showMainMenu());
         document.getElementById('refreshPlayersBtn').addEventListener('click', () => {
             if (multiplayerManager) multiplayerManager.loadOnlinePlayers();
         });
@@ -62,12 +68,12 @@ class WeatherguessrGame {
         document.getElementById('leaveGameBtn').addEventListener('click', () => {
             if (multiplayerManager) {
                 multiplayerManager.cleanup();
-                this.showUsernameScreen();
+                this.showMainMenu();
             }
         });
     }
 
-    startGame() {
+    continueToMainMenu() {
         const username = document.getElementById('usernameInput').value.trim();
         if (!username) {
             alert('Please enter a username!');
@@ -75,24 +81,36 @@ class WeatherguessrGame {
         }
 
         this.currentUser = username;
+        document.getElementById('welcomeUsername').textContent = username;
+        this.showMainMenu();
+    }
+
+    showMainMenu() {
+        document.getElementById('usernameScreen').classList.remove('active');
+        document.getElementById('gameScreen').classList.remove('active');
+        document.getElementById('multiplayerScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.remove('active');
+        document.getElementById('mainMenuScreen').classList.add('active');
+    }
+
+    startSinglePlayer() {
         this.gameState = 'playing';
         this.resetRound();
         this.showGameScreen();
         this.updateUI();
-        
-        // Initialize multiplayer manager
+    }
+
+    startMultiplayer() {
+        // Initialize multiplayer manager if not already done
         if (supabase && !multiplayerManager) {
             multiplayerManager = new MultiplayerManager();
-            multiplayerManager.goOnline(username);
+            multiplayerManager.goOnline(this.currentUser);
         }
         
-        // Set up multiplayer button for active game
-        const multiplayerBtn = document.getElementById('multiplayerBtn');
-        if (multiplayerBtn) {
-            // Remove any existing listeners
-            multiplayerBtn.replaceWith(multiplayerBtn.cloneNode(true));
-            const newMultiplayerBtn = document.getElementById('multiplayerBtn');
-            newMultiplayerBtn.addEventListener('click', () => this.showMultiplayerLobby());
+        if (multiplayerManager) {
+            multiplayerManager.showMultiplayerLobby();
+        } else {
+            alert('Multiplayer requires Supabase configuration. Please check your config.js file.');
         }
     }
 
@@ -102,7 +120,10 @@ class WeatherguessrGame {
     }
 
     showUsernameScreen() {
+        document.getElementById('mainMenuScreen').classList.remove('active');
         document.getElementById('gameScreen').classList.remove('active');
+        document.getElementById('multiplayerScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('usernameScreen').classList.add('active');
         document.getElementById('usernameInput').value = '';
         this.gameState = 'username';
@@ -253,7 +274,7 @@ class WeatherguessrGame {
     }
 
     newGame() {
-        this.showUsernameScreen();
+        this.showMainMenu();
     }
 
     updateUI() {
@@ -475,32 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Initialize the game
         window.weatherguessrGame = new WeatherguessrGame();
-        
-        // Add leaderboard button event listener - this needs to work from the main menu
-        const leaderboardBtn = document.getElementById('leaderboardBtn');
-        if (leaderboardBtn) {
-            leaderboardBtn.addEventListener('click', async () => {
-                // Create a temporary game instance just for showing leaderboard if needed
-                if (!window.weatherguessrGame || window.weatherguessrGame.gameState === 'username') {
-                    const tempGame = new WeatherguessrGame();
-                    await tempGame.showLeaderboard();
-                } else {
-                    await window.weatherguessrGame.showLeaderboard();
-                }
-            });
-        }
-        
-        // Add multiplayer button event listener - this also needs to work from the main menu
-        const multiplayerBtn = document.getElementById('multiplayerBtn');
-        if (multiplayerBtn) {
-            multiplayerBtn.addEventListener('click', () => {
-                if (!supabase) {
-                    alert('Multiplayer requires Supabase configuration. Please check your config.js file.');
-                    return;
-                }
-                alert('Please start a game first to access multiplayer! (Enter username and click "Start Game")');
-            });
-        }
     }, 1000);
 });
 

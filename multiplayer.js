@@ -557,7 +557,7 @@ class MultiplayerManager {
     }
     
     showMultiplayerLobby() {
-        document.getElementById('usernameScreen').classList.remove('active');
+        document.getElementById('mainMenuScreen').classList.remove('active');
         document.getElementById('gameScreen').classList.remove('active');
         document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('multiplayerScreen').classList.add('active');

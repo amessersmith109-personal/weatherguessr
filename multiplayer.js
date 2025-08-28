@@ -579,6 +579,10 @@ class MultiplayerManager {
         const status = document.getElementById(playerSide + 'Status');
 
         const isMySide = this.getMySide() === playerSide;
+        // Debug traces to diagnose disabled state
+        try {
+            console.debug('[MP] updatePlayerSide', { playerSide, isMySide, isReady: playerState.isReady, used: playerState.usedCategories?.length });
+        } catch (e) {}
         
         // Update state display
         if (playerState.currentState) {
@@ -591,6 +595,9 @@ class MultiplayerManager {
         
         // Update roll button (only enable for my side)
         rollBtn.disabled = !isMySide || playerState.isReady || playerState.usedCategories.length >= 8;
+        try {
+            console.debug('[MP] rollBtn.disabled', rollBtn.disabled);
+        } catch (e) {}
         
         // Update score
         currentScore.textContent = playerState.score;
@@ -834,6 +841,8 @@ class MultiplayerManager {
             this.currentGame = data;
             this.showMultiplayerGame();
             this.initializeGameState();
+            // Join broadcast channel so peers sync even without DB replication
+            this.joinGameChannel(this.currentGame.id);
         } catch (e) {
             console.error('processGameLink error:', e);
         }

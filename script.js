@@ -1,5 +1,10 @@
 // Weatherguessr - Main Game Logic
 
+// Initialize Supabase client using config
+const supabase = window.supabase && CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE' 
+    ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) 
+    : null;
+
 class WeatherguessrGame {
     constructor() {
         this.currentUser = '';
@@ -171,7 +176,7 @@ class WeatherguessrGame {
         this.updateUI();
     }
 
-    endGame() {
+    async endGame() {
         this.gameState = 'gameOver';
         
         // Check for new best score
@@ -181,8 +186,8 @@ class WeatherguessrGame {
             this.saveBestScore();
         }
 
-        // Save score to history
-        this.saveScoreToHistory();
+        // Save score to history (both local and global)
+        await this.saveScoreToHistory();
 
         // Show game over modal
         document.getElementById('finalScore').textContent = this.currentScore;
@@ -217,7 +222,8 @@ class WeatherguessrGame {
         }
     }
 
-    saveScoreToHistory() {
+    async saveScoreToHistory() {
+        // Save to local storage (for personal best tracking)
         const scoreHistory = this.loadScoreHistory();
         const newScore = {
             username: this.currentUser,
@@ -228,16 +234,34 @@ class WeatherguessrGame {
 
         scoreHistory.push(newScore);
         
-        // Keep only the last 50 scores
+        // Keep only the last 50 scores locally
         if (scoreHistory.length > 50) {
             scoreHistory.splice(0, scoreHistory.length - 50);
         }
 
         localStorage.setItem('weatherguessr_scoreHistory', JSON.stringify(scoreHistory));
         
-        // Note: This leaderboard is local to each device/browser
-        // To share scores between players, we'd need a backend server
-        // For now, each player sees their own personal leaderboard
+        // Save to global leaderboard (Supabase)
+        if (supabase) {
+            try {
+                const { data, error } = await supabase
+                    .from('scores')
+                    .insert([
+                        {
+                            username: this.currentUser,
+                            score: this.currentScore
+                        }
+                    ]);
+                
+                if (error) {
+                    console.error('Error saving to global leaderboard:', error);
+                } else {
+                    console.log('Score saved to global leaderboard!');
+                }
+            } catch (err) {
+                console.error('Failed to save to global leaderboard:', err);
+            }
+        }
     }
 
     loadScoreHistory() {
@@ -287,41 +311,89 @@ class WeatherguessrGame {
         document.getElementById('scoreHistoryModal').style.display = 'block';
     }
 
-    showLeaderboard() {
-        const history = this.loadScoreHistory();
+    async showLeaderboard() {
         const historyList = document.getElementById('scoreHistoryList');
         
         // Update modal title
-        document.querySelector('#scoreHistoryModal .modal-content h2').textContent = '🏆 Personal Leaderboard';
+        document.querySelector('#scoreHistoryModal .modal-content h2').textContent = '🏆 Global Leaderboard';
         
-        if (history.length === 0) {
-            historyList.innerHTML = '<p>No scores yet! Be the first to play!</p>';
-        } else {
-            const sortedHistory = history.sort((a, b) => a.score - b.score);
-            historyList.innerHTML = sortedHistory.slice(0, 20).map((score, index) => {
-                const date = new Date(score.date).toLocaleDateString();
-                const time = new Date(score.date).toLocaleTimeString();
-                let medal = '';
-                if (index === 0) medal = '🥇';
-                else if (index === 1) medal = '🥈';
-                else if (index === 2) medal = '🥉';
+        // Show loading state
+        historyList.innerHTML = '<p style="text-align: center;">🔄 Loading global leaderboard...</p>';
+        document.getElementById('scoreHistoryModal').style.display = 'block';
+        
+        try {
+            // Fetch global leaderboard from Supabase
+            if (supabase) {
+                const { data, error } = await supabase
+                    .from('scores')
+                    .select('username, score, created_at')
+                    .order('score', { ascending: true })
+                    .limit(20);
                 
-                return `
-                    <div class="score-entry ${index < 3 ? 'top-score' : ''}">
-                        <span>${medal} ${index + 1}. ${score.username}</span>
-                        <span class="score-info">
-                            <span class="score-value">${score.score}</span>
-                            <span class="score-date">${date} ${time}</span>
-                        </span>
-                    </div>
-                `;
-            }).join('');
+                if (error) {
+                    throw error;
+                }
+                
+                if (data && data.length > 0) {
+                    historyList.innerHTML = data.map((score, index) => {
+                        const date = new Date(score.created_at).toLocaleDateString();
+                        const time = new Date(score.created_at).toLocaleTimeString();
+                        let medal = '';
+                        if (index === 0) medal = '🥇';
+                        else if (index === 1) medal = '🥈';
+                        else if (index === 2) medal = '🥉';
+                        
+                        return `
+                            <div class="score-entry ${index < 3 ? 'top-score' : ''}">
+                                <span>${medal} ${index + 1}. ${score.username}</span>
+                                <span class="score-info">
+                                    <span class="score-value">${score.score}</span>
+                                    <span class="score-date">${date} ${time}</span>
+                                </span>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    historyList.innerHTML = '<p style="text-align: center;">No scores yet! Be the first to play!</p>';
+                }
+            } else {
+                // Fallback to local leaderboard if Supabase is not configured
+                const history = this.loadScoreHistory();
+                if (history.length === 0) {
+                    historyList.innerHTML = '<p style="text-align: center;">No scores yet! Be the first to play!</p>';
+                } else {
+                    const sortedHistory = history.sort((a, b) => a.score - b.score);
+                    historyList.innerHTML = sortedHistory.slice(0, 20).map((score, index) => {
+                        const date = new Date(score.date).toLocaleDateString();
+                        const time = new Date(score.date).toLocaleTimeString();
+                        let medal = '';
+                        if (index === 0) medal = '🥇';
+                        else if (index === 1) medal = '🥈';
+                        else if (index === 2) medal = '🥉';
+                        
+                        return `
+                            <div class="score-entry ${index < 3 ? 'top-score' : ''}">
+                                <span>${medal} ${index + 1}. ${score.username}</span>
+                                <span class="score-info">
+                                    <span class="score-value">${score.score}</span>
+                                    <span class="score-date">${date} ${time}</span>
+                                </span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+        } catch (error) {
+            console.error('Error loading leaderboard:', error);
+            historyList.innerHTML = '<p style="text-align: center; color: #dc3545;">❌ Error loading leaderboard. Please try again.</p>';
         }
         
-        // Add note about local leaderboard
-        historyList.innerHTML += '<p style="text-align: center; margin-top: 20px; font-size: 0.9em; color: #666;">📱 This is your personal leaderboard (scores are saved locally)</p>';
-
-        document.getElementById('scoreHistoryModal').style.display = 'block';
+        // Add note about global leaderboard
+        if (supabase) {
+            historyList.innerHTML += '<p style="text-align: center; margin-top: 20px; font-size: 0.9em; color: #666;">🌍 Global leaderboard - All players worldwide!</p>';
+        } else {
+            historyList.innerHTML += '<p style="text-align: center; margin-top: 20px; font-size: 0.9em; color: #666;">📱 Local leaderboard (configure Supabase for global)</p>';
+        }
     }
 
     closeScoreHistory() {
@@ -356,13 +428,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add leaderboard button event listener - this needs to work from the main menu
         const leaderboardBtn = document.getElementById('leaderboardBtn');
         if (leaderboardBtn) {
-            leaderboardBtn.addEventListener('click', () => {
+            leaderboardBtn.addEventListener('click', async () => {
                 // Create a temporary game instance just for showing leaderboard if needed
                 if (!window.weatherguessrGame || window.weatherguessrGame.gameState === 'username') {
                     const tempGame = new WeatherguessrGame();
-                    tempGame.showLeaderboard();
+                    await tempGame.showLeaderboard();
                 } else {
-                    window.weatherguessrGame.showLeaderboard();
+                    await window.weatherguessrGame.showLeaderboard();
                 }
             });
         }

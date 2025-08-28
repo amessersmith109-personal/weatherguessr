@@ -1,5 +1,6 @@
 -- Multiplayer Database Setup for Weatherguessr
 -- Run these commands in your Supabase SQL Editor
+-- (Note: scores table already exists for leaderboard)
 
 -- 1. Online Players Table
 CREATE TABLE IF NOT EXISTS online_players (

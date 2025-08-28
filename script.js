@@ -11,6 +11,8 @@ class WeatherguessrGame {
         this.currentState = null;
         this.currentScore = 0;
         this.categoryScores = {}; // category -> score for deterministic totals
+        this.selectionLock = false;
+        this.rollLock = false;
         this.usedCategories = new Set();
         this.gameState = 'username'; // username, playing, gameOver
         this.bestScore = this.loadBestScore();
@@ -173,8 +175,12 @@ class WeatherguessrGame {
     }
 
     rollState() {
+        if (this.gameState !== 'playing') return;
+        if (this.rollLock) return;
+        this.rollLock = true;
         if (this.usedCategories.size >= 8) {
             alert('All categories have been used! Complete the round or reset.');
+            this.rollLock = false;
             return;
         }
 
@@ -201,6 +207,8 @@ class WeatherguessrGame {
 
         // Enable available categories
         this.updateCategoryAvailability();
+        // allow next interactions
+        this.rollLock = false;
     }
 
     updateCategoryAvailability() {
@@ -218,9 +226,12 @@ class WeatherguessrGame {
     }
 
     selectCategory(categoryName) {
+        if (this.gameState !== 'playing') return;
+        if (this.selectionLock) return;
         if (!this.currentState || this.usedCategories.has(categoryName)) {
             return;
         }
+        this.selectionLock = true;
 
         // Get the ranking for this state in this category
         const ranking = rankings[categoryName][this.currentState];
@@ -255,6 +266,7 @@ class WeatherguessrGame {
         } else {
             this.updateUI();
         }
+        this.selectionLock = false;
     }
 
     resetRound() {
@@ -262,6 +274,8 @@ class WeatherguessrGame {
         this.usedCategories.clear();
         this.currentState = null;
         this.categoryScores = {};
+        this.selectionLock = false;
+        this.rollLock = false;
         
         // Reset UI
         document.getElementById('stateFlag').textContent = '🌤️';

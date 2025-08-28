@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌤️ Weatherguessr - US Weather Geography Game</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌤️</text></svg>">
+</head>
+<body>
+    <!-- Username Input Screen -->
+    <div id="usernameScreen" class="screen active">
+        <div class="container">
+            <div class="logo">
+                <h1>🌤️ Weatherguessr</h1>
+                <p>Match US states to weather categories!</p>
+            </div>
+            
+            <div class="username-form">
+                <h2>Enter Your Username</h2>
+                <input type="text" id="usernameInput" placeholder="Your username" maxlength="20">
+                <button id="startGameBtn" class="btn btn-primary">Start Game</button>
+            </div>
+            
+            <div class="instructions">
+                <h3>How to Play:</h3>
+                <ul>
+                    <li>Roll for a random US state</li>
+                    <li>Choose which weather category it ranks highest in</li>
+                    <li>Get points based on ranking (lower = better)</li>
+                    <li>Complete all 8 categories to finish</li>
+                    <li>Try to get the lowest total score!</li>
+                </ul>
+                <div class="leaderboard-section">
+                    <button id="leaderboardBtn" class="btn btn-secondary">🏆 View Leaderboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Screen -->
+    <div id="gameScreen" class="screen">
+        <div class="header">
+            <div class="user-info">
+                <span id="currentUser"></span>
+                <span id="bestScore"></span>
+            </div>
+            <div class="game-controls">
+                <button id="resetBtn" class="btn btn-secondary">Reset Round</button>
+                <button id="newGameBtn" class="btn btn-secondary">New Game</button>
+            </div>
+        </div>
+
+        <div class="game-container">
+            <!-- Current State Display -->
+            <div class="state-display">
+                <div id="stateFlag" class="state-flag">🌤️</div>
+                <div id="stateName" class="state-name">Click "Roll" to start!</div>
+            </div>
+
+            <!-- Roll Button -->
+            <div class="roll-section">
+                <button id="rollBtn" class="btn btn-primary btn-large">🎲 Roll for State</button>
+            </div>
+
+            <!-- Categories Grid -->
+            <div class="categories-grid">
+                <div class="category" data-category="tornados">
+                    <div class="category-icon">🌪️</div>
+                    <div class="category-name">Tornados</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="rainfall">
+                    <div class="category-icon">🌧️</div>
+                    <div class="category-name">Rainfall</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="highestTemp">
+                    <div class="category-icon">🔥</div>
+                    <div class="category-name">Highest Temp</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="lowestTemp">
+                    <div class="category-icon">❄️</div>
+                    <div class="category-name">Lowest Temp</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="sunshine">
+                    <div class="category-icon">☀️</div>
+                    <div class="category-name">Sunshine</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="wind">
+                    <div class="category-icon">💨</div>
+                    <div class="category-name">Wind</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="snowfall">
+                    <div class="category-icon">🌨️</div>
+                    <div class="category-name">Snowfall</div>
+                    <div class="category-score">-</div>
+                </div>
+                <div class="category" data-category="lightning">
+                    <div class="category-icon">⚡</div>
+                    <div class="category-name">Lightning</div>
+                    <div class="category-score">-</div>
+                </div>
+            </div>
+
+            <!-- Score Display -->
+            <div class="score-section">
+                <div class="current-score">
+                    <span>Current Score: </span>
+                    <span id="currentScore">0</span>
+                </div>
+                <div class="categories-left">
+                    <span>Categories Left: </span>
+                    <span id="categoriesLeft">8</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div id="gameOverModal" class="modal">
+            <div class="modal-content">
+                <h2>🎉 Round Complete!</h2>
+                <div class="final-score">
+                    <span>Final Score: </span>
+                    <span id="finalScore">0</span>
+                </div>
+                <div id="newRecord" class="new-record" style="display: none;">
+                    🏆 New Best Score! 🏆
+                </div>
+                <div class="modal-buttons">
+                    <button id="playAgainBtn" class="btn btn-primary">Play Again</button>
+                    <button id="mainMenuBtn" class="btn btn-secondary">Main Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Score History Modal -->
+        <div id="scoreHistoryModal" class="modal">
+            <div class="modal-content">
+                <h2>📊 Score History</h2>
+                <div id="scoreHistoryList"></div>
+                <button id="closeHistoryBtn" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="screen">
+        <div class="loading-content">
+            <div class="loading-spinner">🌤️</div>
+            <h2>Loading Weather Data...</h2>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

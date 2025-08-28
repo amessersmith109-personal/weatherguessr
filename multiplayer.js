@@ -494,6 +494,11 @@ class MultiplayerManager {
         document.getElementById('player1Name').textContent = this.currentGame.player1;
         document.getElementById('player2Name').textContent = this.currentGame.player2;
         
+        // Highlight my side
+        const meIsPlayer1 = this.currentGame.player1 === this.currentUser;
+        document.getElementById('player1Side').style.outline = meIsPlayer1 ? '3px solid #667eea' : '';
+        document.getElementById('player2Side').style.outline = !meIsPlayer1 ? '3px solid #667eea' : '';
+
         // Update scores
         document.getElementById('player1Score').textContent = gameState.player1_wins || 0;
         document.getElementById('player2Score').textContent = gameState.player2_wins || 0;
@@ -516,6 +521,9 @@ class MultiplayerManager {
         const rollBtn = document.getElementById(playerSide + 'RollBtn');
         const currentScore = document.getElementById(playerSide + 'CurrentScore');
         const status = document.getElementById(playerSide + 'Status');
+
+        const isMySide = (playerSide === 'player1' && this.currentGame.player1 === this.currentUser) ||
+                         (playerSide === 'player2' && this.currentGame.player2 === this.currentUser);
         
         // Update state display
         if (playerState.currentState) {
@@ -526,8 +534,8 @@ class MultiplayerManager {
             stateName.textContent = 'Waiting for roll...';
         }
         
-        // Update roll button
-        rollBtn.disabled = playerState.isReady || playerState.usedCategories.length >= 8;
+        // Update roll button (only enable for my side)
+        rollBtn.disabled = !isMySide || playerState.isReady || playerState.usedCategories.length >= 8;
         
         // Update score
         currentScore.textContent = playerState.score;
@@ -545,10 +553,10 @@ class MultiplayerManager {
         }
         
         // Update categories
-        this.updatePlayerCategories(playerSide, playerState);
+        this.updatePlayerCategories(playerSide, playerState, isMySide);
     }
     
-    updatePlayerCategories(playerSide, playerState) {
+    updatePlayerCategories(playerSide, playerState, isMySide) {
         const categoriesContainer = document.getElementById(playerSide + 'Categories');
         categoriesContainer.innerHTML = '';
         
@@ -580,7 +588,7 @@ class MultiplayerManager {
                 <div class="category-score">${isSelected ? this.getCategoryScore(playerState.currentState, category.name) : '-'}</div>
             `;
             
-            if (!isUsed && playerState.currentState) {
+            if (isMySide && !isUsed && playerState.currentState) {
                 categoryElement.addEventListener('click', () => {
                     this.selectCategory(playerSide, category.name);
                 });

@@ -402,18 +402,33 @@ class MultiplayerManager {
             roundWinner: null
         };
     }
+
+    normalizeGameState(state) {
+        const base = this.getInitialGameState();
+        const out = { ...base, ...(state || {}) };
+        out.player1 = { ...base.player1, ...(out.player1 || {}) };
+        out.player1.usedCategories = Array.isArray(out.player1.usedCategories) ? out.player1.usedCategories : [];
+        out.player1.score = Number.isFinite(out.player1.score) ? out.player1.score : 0;
+        out.player1.isReady = !!out.player1.isReady;
+        out.player2 = { ...base.player2, ...(out.player2 || {}) };
+        out.player2.usedCategories = Array.isArray(out.player2.usedCategories) ? out.player2.usedCategories : [];
+        out.player2.score = Number.isFinite(out.player2.score) ? out.player2.score : 0;
+        out.player2.isReady = !!out.player2.isReady;
+        out.roundState = out.roundState || 'waiting';
+        return out;
+    }
     
     initializeGameState() {
         if (!this.currentGame) return;
-        
-        const gameState = this.currentGame.game_state;
+        const gameState = this.normalizeGameState(this.currentGame.game_state);
+        this.currentGame.game_state = gameState;
         this.updateGameUI(gameState);
     }
     
     async rollState(playerSide) {
         if (!this.currentGame) return;
         
-        const gameState = { ...this.currentGame.game_state };
+        const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
         const player = gameState[playerSide];
         
         // Get available states (not used by either player)
@@ -453,7 +468,7 @@ class MultiplayerManager {
     async selectCategory(playerSide, categoryName) {
         if (!this.currentGame) return;
         
-        const gameState = { ...this.currentGame.game_state };
+        const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
         const player = gameState[playerSide];
         
         if (!player.currentState || player.usedCategories.includes(categoryName)) {
@@ -555,19 +570,23 @@ class MultiplayerManager {
         document.getElementById('player1Side').style.outline = mySide === 'player1' ? '3px solid #667eea' : '';
         document.getElementById('player2Side').style.outline = mySide === 'player2' ? '3px solid #667eea' : '';
 
+        // Coerce state
+        const state = this.normalizeGameState(gameState);
+        this.currentGame.game_state = state;
+        
         // Update scores
-        document.getElementById('player1Score').textContent = gameState.player1_wins || 0;
-        document.getElementById('player2Score').textContent = gameState.player2_wins || 0;
+        document.getElementById('player1Score').textContent = state.player1_wins || 0;
+        document.getElementById('player2Score').textContent = state.player2_wins || 0;
         
         // Update current round
         document.getElementById('currentRound').textContent = this.currentGame.current_round || 1;
         
         // Update player states
-        this.updatePlayerSide('player1', gameState.player1);
-        this.updatePlayerSide('player2', gameState.player2);
+        this.updatePlayerSide('player1', state.player1);
+        this.updatePlayerSide('player2', state.player2);
         
         // Handle round state
-        this.handleRoundState(gameState.roundState, gameState.roundWinner);
+        this.handleRoundState(state.roundState, state.roundWinner);
     }
     
     updatePlayerSide(playerSide, playerState) {
@@ -838,6 +857,8 @@ class MultiplayerManager {
                     return;
                 }
             }
+            // Ensure state shape
+            data.game_state = this.normalizeGameState(data.game_state);
             this.currentGame = data;
             this.showMultiplayerGame();
             this.initializeGameState();

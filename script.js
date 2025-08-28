@@ -79,9 +79,12 @@ class WeatherguessrGame {
             return;
         }
 
-        // Random state selection
+        // Enhanced random state selection with better randomization
         const randomIndex = Math.floor(Math.random() * availableStates.length);
         this.currentState = availableStates[randomIndex];
+        
+        // For debugging: log the selection (you can remove this later)
+        console.log(`Rolled: ${this.currentState} (${availableStates.length} states available)`);
 
         // Update UI
         document.getElementById('stateFlag').textContent = stateFlags[this.currentState];
@@ -344,9 +347,14 @@ document.addEventListener('DOMContentLoaded', () => {
         window.weatherguessrGame = new WeatherguessrGame();
         
         // Add leaderboard button event listener
-        document.getElementById('leaderboardBtn').addEventListener('click', () => {
-            window.weatherguessrGame.showLeaderboard();
-        });
+        const leaderboardBtn = document.getElementById('leaderboardBtn');
+        if (leaderboardBtn) {
+            leaderboardBtn.addEventListener('click', () => {
+                if (window.weatherguessrGame) {
+                    window.weatherguessrGame.showLeaderboard();
+                }
+            });
+        }
     }, 1000);
 });
 

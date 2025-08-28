@@ -42,8 +42,7 @@ class WeatherguessrGame {
         // Score history
         document.getElementById('closeHistoryBtn').addEventListener('click', () => this.closeScoreHistory());
         
-        // Multiplayer buttons
-        document.getElementById('multiplayerBtn').addEventListener('click', () => this.showMultiplayerLobby());
+        // Multiplayer buttons (only when game is active)
         document.getElementById('backToMainBtn').addEventListener('click', () => this.showUsernameScreen());
         document.getElementById('refreshPlayersBtn').addEventListener('click', () => {
             if (multiplayerManager) multiplayerManager.loadOnlinePlayers();
@@ -85,6 +84,15 @@ class WeatherguessrGame {
         if (supabase && !multiplayerManager) {
             multiplayerManager = new MultiplayerManager();
             multiplayerManager.goOnline(username);
+        }
+        
+        // Set up multiplayer button for active game
+        const multiplayerBtn = document.getElementById('multiplayerBtn');
+        if (multiplayerBtn) {
+            // Remove any existing listeners
+            multiplayerBtn.replaceWith(multiplayerBtn.cloneNode(true));
+            const newMultiplayerBtn = document.getElementById('multiplayerBtn');
+            newMultiplayerBtn.addEventListener('click', () => this.showMultiplayerLobby());
         }
     }
 
@@ -479,6 +487,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     await window.weatherguessrGame.showLeaderboard();
                 }
+            });
+        }
+        
+        // Add multiplayer button event listener - this also needs to work from the main menu
+        const multiplayerBtn = document.getElementById('multiplayerBtn');
+        if (multiplayerBtn) {
+            multiplayerBtn.addEventListener('click', () => {
+                alert('Please start a game first to access multiplayer!');
             });
         }
     }, 1000);

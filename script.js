@@ -41,6 +41,31 @@ class WeatherguessrGame {
 
         // Score history
         document.getElementById('closeHistoryBtn').addEventListener('click', () => this.closeScoreHistory());
+        
+        // Multiplayer buttons
+        document.getElementById('multiplayerBtn').addEventListener('click', () => this.showMultiplayerLobby());
+        document.getElementById('backToMainBtn').addEventListener('click', () => this.showUsernameScreen());
+        document.getElementById('refreshPlayersBtn').addEventListener('click', () => {
+            if (multiplayerManager) multiplayerManager.loadOnlinePlayers();
+        });
+        
+        // Multiplayer game controls
+        document.getElementById('player1RollBtn').addEventListener('click', () => {
+            if (multiplayerManager) multiplayerManager.rollState('player1');
+        });
+        document.getElementById('player2RollBtn').addEventListener('click', () => {
+            if (multiplayerManager) multiplayerManager.rollState('player2');
+        });
+        document.getElementById('nextRoundBtn').addEventListener('click', () => {
+            if (multiplayerManager) multiplayerManager.nextRound();
+            document.getElementById('roundCompleteModal').style.display = 'none';
+        });
+        document.getElementById('leaveGameBtn').addEventListener('click', () => {
+            if (multiplayerManager) {
+                multiplayerManager.cleanup();
+                this.showUsernameScreen();
+            }
+        });
     }
 
     startGame() {
@@ -55,6 +80,12 @@ class WeatherguessrGame {
         this.resetRound();
         this.showGameScreen();
         this.updateUI();
+        
+        // Initialize multiplayer manager
+        if (supabase && !multiplayerManager) {
+            multiplayerManager = new MultiplayerManager();
+            multiplayerManager.goOnline(username);
+        }
     }
 
     showGameScreen() {
@@ -67,6 +98,18 @@ class WeatherguessrGame {
         document.getElementById('usernameScreen').classList.add('active');
         document.getElementById('usernameInput').value = '';
         this.gameState = 'username';
+    }
+    
+    showMultiplayerLobby() {
+        if (!multiplayerManager) {
+            alert('Please start a game first to access multiplayer!');
+            return;
+        }
+        
+        document.getElementById('usernameScreen').classList.remove('active');
+        document.getElementById('gameScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.remove('active');
+        document.getElementById('multiplayerScreen').classList.add('active');
     }
 
     rollState() {

@@ -1,0 +1,642 @@
+// Multiplayer Game Logic
+class MultiplayerManager {
+    constructor() {
+        this.currentUser = '';
+        this.currentGame = null;
+        this.isOnline = false;
+        this.onlinePlayers = [];
+        this.pendingInvitations = [];
+        this.realTimeSubscriptions = [];
+        
+        this.initializeMultiplayer();
+    }
+    
+    async initializeMultiplayer() {
+        if (!supabase) {
+            console.error('Supabase not configured for multiplayer');
+            return;
+        }
+        
+        // Set up real-time subscriptions
+        this.setupRealTimeSubscriptions();
+        
+        // Start heartbeat to keep player online
+        this.startHeartbeat();
+    }
+    
+    setupRealTimeSubscriptions() {
+        // Listen for online players changes
+        const onlinePlayersSubscription = supabase
+            .channel('online_players')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'online_players' },
+                (payload) => {
+                    this.handleOnlinePlayersChange(payload);
+                }
+            )
+            .subscribe();
+            
+        // Listen for invitations
+        const invitationsSubscription = supabase
+            .channel('game_invitations')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'game_invitations' },
+                (payload) => {
+                    this.handleInvitationChange(payload);
+                }
+            )
+            .subscribe();
+            
+        // Listen for game state changes
+        const gameStateSubscription = supabase
+            .channel('multiplayer_games')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'multiplayer_games' },
+                (payload) => {
+                    this.handleGameStateChange(payload);
+                }
+            )
+            .subscribe();
+            
+        this.realTimeSubscriptions.push(
+            onlinePlayersSubscription,
+            invitationsSubscription,
+            gameStateSubscription
+        );
+    }
+    
+    async goOnline(username) {
+        this.currentUser = username;
+        
+        try {
+            // Upsert player status
+            const { error } = await supabase
+                .from('online_players')
+                .upsert({
+                    username: username,
+                    last_seen: new Date().toISOString(),
+                    is_available: true
+                });
+                
+            if (error) throw error;
+            
+            this.isOnline = true;
+            console.log(`${username} is now online`);
+            
+            // Load initial data
+            await this.loadOnlinePlayers();
+            await this.loadPendingInvitations();
+            
+        } catch (error) {
+            console.error('Error going online:', error);
+        }
+    }
+    
+    async goOffline() {
+        if (!this.currentUser) return;
+        
+        try {
+            // Remove from online players
+            const { error } = await supabase
+                .from('online_players')
+                .delete()
+                .eq('username', this.currentUser);
+                
+            if (error) throw error;
+            
+            this.isOnline = false;
+            console.log(`${this.currentUser} is now offline`);
+            
+        } catch (error) {
+            console.error('Error going offline:', error);
+        }
+    }
+    
+    startHeartbeat() {
+        // Update last_seen every 30 seconds
+        setInterval(async () => {
+            if (this.isOnline && this.currentUser) {
+                try {
+                    await supabase
+                        .from('online_players')
+                        .update({ last_seen: new Date().toISOString() })
+                        .eq('username', this.currentUser);
+                } catch (error) {
+                    console.error('Heartbeat error:', error);
+                }
+            }
+        }, 30000);
+    }
+    
+    async loadOnlinePlayers() {
+        try {
+            const { data, error } = await supabase
+                .from('online_players')
+                .select('*')
+                .eq('is_available', true)
+                .neq('username', this.currentUser)
+                .order('last_seen', { ascending: false });
+                
+            if (error) throw error;
+            
+            this.onlinePlayers = data || [];
+            this.updateOnlinePlayersUI();
+            
+        } catch (error) {
+            console.error('Error loading online players:', error);
+        }
+    }
+    
+    async loadPendingInvitations() {
+        try {
+            const { data, error } = await supabase
+                .from('game_invitations')
+                .select('*')
+                .eq('to_username', this.currentUser)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+                
+            if (error) throw error;
+            
+            this.pendingInvitations = data || [];
+            this.updateInvitationsUI();
+            
+        } catch (error) {
+            console.error('Error loading invitations:', error);
+        }
+    }
+    
+    async sendInvitation(toUsername) {
+        try {
+            const { error } = await supabase
+                .from('game_invitations')
+                .insert({
+                    from_username: this.currentUser,
+                    to_username: toUsername,
+                    status: 'pending'
+                });
+                
+            if (error) throw error;
+            
+            console.log(`Invitation sent to ${toUsername}`);
+            
+        } catch (error) {
+            console.error('Error sending invitation:', error);
+        }
+    }
+    
+    async respondToInvitation(invitationId, response) {
+        try {
+            const { error } = await supabase
+                .from('game_invitations')
+                .update({ status: response })
+                .eq('id', invitationId);
+                
+            if (error) throw error;
+            
+            if (response === 'accepted') {
+                // Get the invitation details to start the game
+                const { data } = await supabase
+                    .from('game_invitations')
+                    .select('*')
+                    .eq('id', invitationId)
+                    .single();
+                    
+                if (data) {
+                    await this.startMultiplayerGame(data.from_username, data.to_username);
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error responding to invitation:', error);
+        }
+    }
+    
+    async startMultiplayerGame(player1, player2) {
+        try {
+            // Create new game
+            const { data, error } = await supabase
+                .from('multiplayer_games')
+                .insert({
+                    player1: player1,
+                    player2: player2,
+                    current_round: 1,
+                    player1_wins: 0,
+                    player2_wins: 0,
+                    game_state: this.getInitialGameState(),
+                    status: 'active'
+                })
+                .select()
+                .single();
+                
+            if (error) throw error;
+            
+            this.currentGame = data;
+            this.showMultiplayerGame();
+            this.initializeGameState();
+            
+        } catch (error) {
+            console.error('Error starting multiplayer game:', error);
+        }
+    }
+    
+    getInitialGameState() {
+        return {
+            player1: {
+                currentState: null,
+                score: 0,
+                usedCategories: [],
+                isReady: false
+            },
+            player2: {
+                currentState: null,
+                score: 0,
+                usedCategories: [],
+                isReady: false
+            },
+            roundState: 'waiting', // waiting, rolling, playing, complete
+            roundWinner: null
+        };
+    }
+    
+    initializeGameState() {
+        if (!this.currentGame) return;
+        
+        const gameState = this.currentGame.game_state;
+        this.updateGameUI(gameState);
+    }
+    
+    async rollState(playerSide) {
+        if (!this.currentGame) return;
+        
+        const gameState = { ...this.currentGame.game_state };
+        const player = gameState[playerSide];
+        
+        // Get available states (not used by either player)
+        const usedStates = new Set([
+            ...gameState.player1.usedCategories,
+            ...gameState.player2.usedCategories
+        ]);
+        
+        const availableStates = Object.keys(stateFlags).filter(state => 
+            !usedStates.has(state)
+        );
+        
+        if (availableStates.length === 0) {
+            alert('No more states available!');
+            return;
+        }
+        
+        // Random state selection
+        const randomIndex = Math.floor(Math.random() * availableStates.length);
+        const selectedState = availableStates[randomIndex];
+        
+        // Update game state
+        player.currentState = selectedState;
+        player.isReady = true;
+        
+        // Check if both players are ready
+        if (gameState.player1.isReady && gameState.player2.isReady) {
+            gameState.roundState = 'playing';
+        }
+        
+        // Save to database
+        await this.updateGameState(gameState);
+    }
+    
+    async selectCategory(playerSide, categoryName) {
+        if (!this.currentGame) return;
+        
+        const gameState = { ...this.currentGame.game_state };
+        const player = gameState[playerSide];
+        
+        if (!player.currentState || player.usedCategories.includes(categoryName)) {
+            return;
+        }
+        
+        // Get the ranking for this state in this category
+        const ranking = rankings[categoryName][player.currentState];
+        const score = ranking > 100 ? 100 : ranking;
+        
+        // Update player state
+        player.score += score;
+        player.usedCategories.push(categoryName);
+        
+        // Check if round is complete
+        if (player.usedCategories.length >= 8) {
+            // Check if both players have completed
+            if (gameState.player1.usedCategories.length >= 8 && 
+                gameState.player2.usedCategories.length >= 8) {
+                
+                // Determine round winner
+                const player1Score = gameState.player1.score;
+                const player2Score = gameState.player2.score;
+                
+                if (player1Score < player2Score) {
+                    gameState.roundWinner = 'player1';
+                    gameState.player1_wins = (gameState.player1_wins || 0) + 1;
+                } else if (player2Score < player1Score) {
+                    gameState.roundWinner = 'player2';
+                    gameState.player2_wins = (gameState.player2_wins || 0) + 1;
+                } else {
+                    gameState.roundWinner = 'tie';
+                }
+                
+                gameState.roundState = 'complete';
+            }
+        }
+        
+        // Save to database
+        await this.updateGameState(gameState);
+    }
+    
+    async updateGameState(gameState) {
+        if (!this.currentGame) return;
+        
+        try {
+            const { error } = await supabase
+                .from('multiplayer_games')
+                .update({ 
+                    game_state: gameState,
+                    player1_wins: gameState.player1_wins || 0,
+                    player2_wins: gameState.player2_wins || 0,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', this.currentGame.id);
+                
+            if (error) throw error;
+            
+        } catch (error) {
+            console.error('Error updating game state:', error);
+        }
+    }
+    
+    async nextRound() {
+        if (!this.currentGame) return;
+        
+        const gameState = this.getInitialGameState();
+        gameState.player1_wins = this.currentGame.player1_wins || 0;
+        gameState.player2_wins = this.currentGame.player2_wins || 0;
+        
+        const newRound = (this.currentGame.current_round || 1) + 1;
+        
+        try {
+            const { error } = await supabase
+                .from('multiplayer_games')
+                .update({
+                    current_round: newRound,
+                    game_state: gameState,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', this.currentGame.id);
+                
+            if (error) throw error;
+            
+        } catch (error) {
+            console.error('Error starting next round:', error);
+        }
+    }
+    
+    updateGameUI(gameState) {
+        // Update player names
+        document.getElementById('player1Name').textContent = this.currentGame.player1;
+        document.getElementById('player2Name').textContent = this.currentGame.player2;
+        
+        // Update scores
+        document.getElementById('player1Score').textContent = gameState.player1_wins || 0;
+        document.getElementById('player2Score').textContent = gameState.player2_wins || 0;
+        
+        // Update current round
+        document.getElementById('currentRound').textContent = this.currentGame.current_round || 1;
+        
+        // Update player states
+        this.updatePlayerSide('player1', gameState.player1);
+        this.updatePlayerSide('player2', gameState.player2);
+        
+        // Handle round state
+        this.handleRoundState(gameState.roundState, gameState.roundWinner);
+    }
+    
+    updatePlayerSide(playerSide, playerState) {
+        const sideElement = document.getElementById(playerSide + 'Side');
+        const stateFlag = document.getElementById(playerSide + 'StateFlag');
+        const stateName = document.getElementById(playerSide + 'StateName');
+        const rollBtn = document.getElementById(playerSide + 'RollBtn');
+        const currentScore = document.getElementById(playerSide + 'CurrentScore');
+        const status = document.getElementById(playerSide + 'Status');
+        
+        // Update state display
+        if (playerState.currentState) {
+            stateFlag.textContent = stateFlags[playerState.currentState];
+            stateName.textContent = playerState.currentState;
+        } else {
+            stateFlag.textContent = '🌤️';
+            stateName.textContent = 'Waiting for roll...';
+        }
+        
+        // Update roll button
+        rollBtn.disabled = playerState.isReady || playerState.usedCategories.length >= 8;
+        
+        // Update score
+        currentScore.textContent = playerState.score;
+        
+        // Update status
+        if (playerState.usedCategories.length >= 8) {
+            status.textContent = 'Completed';
+            status.className = 'player-status completed';
+        } else if (playerState.isReady) {
+            status.textContent = 'Playing';
+            status.className = 'player-status playing';
+        } else {
+            status.textContent = 'Waiting';
+            status.className = 'player-status waiting';
+        }
+        
+        // Update categories
+        this.updatePlayerCategories(playerSide, playerState);
+    }
+    
+    updatePlayerCategories(playerSide, playerState) {
+        const categoriesContainer = document.getElementById(playerSide + 'Categories');
+        categoriesContainer.innerHTML = '';
+        
+        const categories = [
+            { name: 'tornados', icon: '🌪️', displayName: 'Tornados (Yearly Avg)' },
+            { name: 'rainfall', icon: '🌧️', displayName: 'Rainfall (Yearly Avg)' },
+            { name: 'highestTemp', icon: '🔥', displayName: 'Highest Temp (Historic)' },
+            { name: 'lowestTemp', icon: '❄️', displayName: 'Lowest Temp (Historic)' },
+            { name: 'sunshine', icon: '☀️', displayName: 'Sunshine (Yearly Avg)' },
+            { name: 'wind', icon: '💨', displayName: 'Wind (Yearly Avg)' },
+            { name: 'snowfall', icon: '🌨️', displayName: 'Snowfall (Yearly Avg)' },
+            { name: 'lightning', icon: '⚡', displayName: 'Lightning (Yearly Avg)' }
+        ];
+        
+        categories.forEach(category => {
+            const categoryElement = document.createElement('div');
+            categoryElement.className = 'category';
+            categoryElement.dataset.category = category.name;
+            
+            const isUsed = playerState.usedCategories.includes(category.name);
+            const isSelected = playerState.usedCategories.includes(category.name);
+            
+            if (isUsed) categoryElement.classList.add('used');
+            if (isSelected) categoryElement.classList.add('selected');
+            
+            categoryElement.innerHTML = `
+                <div class="category-icon">${category.icon}</div>
+                <div class="category-name">${category.displayName}</div>
+                <div class="category-score">${isSelected ? this.getCategoryScore(playerState.currentState, category.name) : '-'}</div>
+            `;
+            
+            if (!isUsed && playerState.currentState) {
+                categoryElement.addEventListener('click', () => {
+                    this.selectCategory(playerSide, category.name);
+                });
+            }
+            
+            categoriesContainer.appendChild(categoryElement);
+        });
+    }
+    
+    getCategoryScore(state, category) {
+        if (!state) return '-';
+        const ranking = rankings[category][state];
+        const score = ranking > 100 ? 100 : ranking;
+        return score;
+    }
+    
+    handleRoundState(roundState, roundWinner) {
+        if (roundState === 'complete') {
+            this.showRoundCompleteModal(roundWinner);
+        }
+    }
+    
+    showRoundCompleteModal(roundWinner) {
+        const modal = document.getElementById('roundCompleteModal');
+        const winnerName = document.getElementById('roundWinnerName');
+        const finalScores = document.getElementById('roundFinalScores');
+        
+        if (roundWinner === 'tie') {
+            winnerName.textContent = 'It\'s a tie!';
+        } else {
+            const winner = roundWinner === 'player1' ? this.currentGame.player1 : this.currentGame.player2;
+            winnerName.textContent = winner;
+        }
+        
+        const gameState = this.currentGame.game_state;
+        finalScores.innerHTML = `
+            <div>${this.currentGame.player1}: ${gameState.player1.score}</div>
+            <div>${this.currentGame.player2}: ${gameState.player2.score}</div>
+        `;
+        
+        modal.style.display = 'block';
+    }
+    
+    showMultiplayerGame() {
+        document.getElementById('multiplayerScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.add('active');
+    }
+    
+    showMultiplayerLobby() {
+        document.getElementById('usernameScreen').classList.remove('active');
+        document.getElementById('gameScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.remove('active');
+        document.getElementById('multiplayerScreen').classList.add('active');
+    }
+    
+    updateOnlinePlayersUI() {
+        const container = document.getElementById('onlinePlayersList');
+        
+        if (this.onlinePlayers.length === 0) {
+            container.innerHTML = '<p>No other players online</p>';
+            return;
+        }
+        
+        container.innerHTML = this.onlinePlayers.map(player => `
+            <div class="player-item">
+                <div class="player-info">
+                    <span class="player-name">${player.username}</span>
+                    <span class="player-status">🟢 Online</span>
+                </div>
+                <button class="challenge-btn" onclick="multiplayerManager.sendInvitation('${player.username}')">
+                    Challenge
+                </button>
+            </div>
+        `).join('');
+    }
+    
+    updateInvitationsUI() {
+        const container = document.getElementById('invitationsList');
+        
+        if (this.pendingInvitations.length === 0) {
+            container.innerHTML = '<p>No pending invitations</p>';
+            return;
+        }
+        
+        container.innerHTML = this.pendingInvitations.map(invitation => `
+            <div class="invitation-item">
+                <div class="invitation-info">
+                    <span>${invitation.from_username} wants to play!</span>
+                </div>
+                <div class="invitation-actions">
+                    <button class="accept-btn" onclick="multiplayerManager.respondToInvitation(${invitation.id}, 'accepted')">
+                        Accept
+                    </button>
+                    <button class="decline-btn" onclick="multiplayerManager.respondToInvitation(${invitation.id}, 'declined')">
+                        Decline
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    handleOnlinePlayersChange(payload) {
+        if (payload.eventType === 'INSERT') {
+            this.onlinePlayers.push(payload.new);
+        } else if (payload.eventType === 'DELETE') {
+            this.onlinePlayers = this.onlinePlayers.filter(p => p.username !== payload.old.username);
+        } else if (payload.eventType === 'UPDATE') {
+            const index = this.onlinePlayers.findIndex(p => p.username === payload.new.username);
+            if (index !== -1) {
+                this.onlinePlayers[index] = payload.new;
+            }
+        }
+        
+        this.updateOnlinePlayersUI();
+    }
+    
+    handleInvitationChange(payload) {
+        if (payload.eventType === 'INSERT' && payload.new.to_username === this.currentUser) {
+            this.pendingInvitations.push(payload.new);
+        } else if (payload.eventType === 'UPDATE') {
+            const index = this.pendingInvitations.findIndex(i => i.id === payload.new.id);
+            if (index !== -1) {
+                this.pendingInvitations[index] = payload.new;
+            }
+        } else if (payload.eventType === 'DELETE') {
+            this.pendingInvitations = this.pendingInvitations.filter(i => i.id !== payload.old.id);
+        }
+        
+        this.updateInvitationsUI();
+    }
+    
+    handleGameStateChange(payload) {
+        if (payload.eventType === 'UPDATE' && this.currentGame && payload.new.id === this.currentGame.id) {
+            this.currentGame = payload.new;
+            this.updateGameUI(payload.new.game_state);
+        }
+    }
+    
+    cleanup() {
+        // Unsubscribe from real-time channels
+        this.realTimeSubscriptions.forEach(subscription => {
+            subscription.unsubscribe();
+        });
+        
+        // Go offline
+        this.goOffline();
+    }
+}
+
+// Global multiplayer manager instance
+let multiplayerManager = null;

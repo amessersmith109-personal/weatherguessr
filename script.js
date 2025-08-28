@@ -494,7 +494,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const multiplayerBtn = document.getElementById('multiplayerBtn');
         if (multiplayerBtn) {
             multiplayerBtn.addEventListener('click', () => {
-                alert('Please start a game first to access multiplayer!');
+                if (!supabase) {
+                    alert('Multiplayer requires Supabase configuration. Please check your config.js file.');
+                    return;
+                }
+                alert('Please start a game first to access multiplayer! (Enter username and click "Start Game")');
             });
         }
     }, 1000);

@@ -394,14 +394,16 @@ class MultiplayerManager {
                 score: 0,
                 usedCategories: [],
                 isReady: false,
-                preReady: false
+                preReady: false,
+                chosenScores: {}
             },
             player2: {
                 currentState: null,
                 score: 0,
                 usedCategories: [],
                 isReady: false,
-                preReady: false
+                preReady: false,
+                chosenScores: {}
             },
             roundState: 'waiting', // waiting, rolling, playing, complete
             roundWinner: null
@@ -416,11 +418,13 @@ class MultiplayerManager {
         out.player1.score = Number.isFinite(out.player1.score) ? out.player1.score : 0;
         out.player1.isReady = !!out.player1.isReady;
         out.player1.preReady = !!out.player1.preReady;
+        out.player1.chosenScores = typeof out.player1.chosenScores === 'object' && out.player1.chosenScores !== null ? out.player1.chosenScores : {};
         out.player2 = { ...base.player2, ...(out.player2 || {}) };
         out.player2.usedCategories = Array.isArray(out.player2.usedCategories) ? out.player2.usedCategories : [];
         out.player2.score = Number.isFinite(out.player2.score) ? out.player2.score : 0;
         out.player2.isReady = !!out.player2.isReady;
         out.player2.preReady = !!out.player2.preReady;
+        out.player2.chosenScores = typeof out.player2.chosenScores === 'object' && out.player2.chosenScores !== null ? out.player2.chosenScores : {};
         out.roundState = out.roundState || 'waiting';
         return out;
     }
@@ -489,6 +493,7 @@ class MultiplayerManager {
             const score = ranking > 100 ? 100 : ranking;
             player.score += score;
             player.usedCategories.push(categoryName);
+            player.chosenScores[categoryName] = score;
             if (player.usedCategories.length >= 8) {
                 if (gameState.player1.usedCategories.length >= 8 && 
                     gameState.player2.usedCategories.length >= 8) {
@@ -691,18 +696,17 @@ class MultiplayerManager {
             categoryElement.dataset.category = category.name;
             
             const isUsed = playerState.usedCategories.includes(category.name);
-            const isSelected = playerState.usedCategories.includes(category.name);
-            
             if (isUsed) categoryElement.classList.add('used');
-            if (isSelected) categoryElement.classList.add('selected');
+            if (isUsed) categoryElement.classList.add('selected');
             
+            const chosenScore = isUsed && playerState.chosenScores ? playerState.chosenScores[category.name] : undefined;
             categoryElement.innerHTML = `
                 <div class="category-icon">${category.icon}</div>
                 <div class="category-name">${category.displayName}</div>
-                <div class="category-score">${isSelected ? this.getCategoryScore(playerState.currentState, category.name) : '-'}</div>
+                <div class="category-score">${isUsed && typeof chosenScore !== 'undefined' ? chosenScore : '-'}</div>
             `;
             
-            if (isMySide && !isUsed && playerState.currentState) {
+            if (!isUsed && playerState.currentState) {
                 categoryElement.addEventListener('click', () => {
                     this.selectCategory(playerSide, category.name);
                 });

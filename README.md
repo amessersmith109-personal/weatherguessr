@@ -13,14 +13,14 @@ A fun geography and weather game where you match US states to weather categories
 
 ## 🌡️ Weather Categories
 
-- 🌪️ **Tornados** - Average annual tornado count
-- 🌧️ **Rainfall** - Average annual precipitation
-- 🔥 **Highest Temperature** - Record high temperatures
-- ❄️ **Lowest Temperature** - Record low temperatures  
-- ☀️ **Sunshine** - Average annual sunny days
-- 💨 **Wind** - Average wind speeds
-- 🌨️ **Snowfall** - Average annual snowfall
-- ⚡ **Lightning** - Lightning strike frequency
+- 🌪️ **Tornados (Yearly Avg)** - Average annual tornado count
+- 🌧️ **Rainfall (Yearly Avg)** - Average annual precipitation
+- 🔥 **Highest Temperature (Historic)** - Record high temperatures
+- ❄️ **Lowest Temperature (Historic)** - Record low temperatures  
+- ☀️ **Sunshine (Yearly Avg)** - Average annual sunny days
+- 💨 **Wind (Yearly Avg)** - Average wind speeds
+- 🌨️ **Snowfall (Yearly Avg)** - Average annual snowfall
+- ⚡ **Lightning (Yearly Avg)** - Lightning strike frequency
 
 ## 🏆 Scoring System
 

@@ -155,7 +155,7 @@ class MultiplayerManager {
                 await Promise.all([
                     this.loadOnlinePlayers(),
                     this.loadPendingInvitations(),
-                    this.loadRooms()
+                    (typeof this.loadRooms === 'function' ? this.loadRooms() : Promise.resolve())
                 ]);
             }
         }, 10000);
@@ -750,7 +750,9 @@ class MultiplayerManager {
         document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('multiplayerScreen').classList.add('active');
         // Load rooms on entering lobby
-        this.loadRooms();
+        if (typeof this.loadRooms === 'function') {
+            this.loadRooms();
+        }
         // If URL contains an inviteId, surface it here as a prompt
         const urlParams = new URLSearchParams(window.location.search);
         const inviteId = urlParams.get('inviteId');

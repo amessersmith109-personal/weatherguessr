@@ -821,6 +821,85 @@ class MultiplayerManager {
         if (header) header.textContent = `📨 Invitations (${this.pendingInvitations.length})`;
     }
 
+    // --- Minimal Rooms (placeholder) ---
+    async loadRooms() {
+        try {
+            const container = document.getElementById('roomsList');
+            if (!container) return;
+            // If Supabase rooms table exists, try to fetch; otherwise fall back to placeholders
+            if (typeof supabase?.from === 'function') {
+                try {
+                    const { data, error } = await supabase
+                        .from('rooms')
+                        .select('*')
+                        .order('name', { ascending: true });
+                    if (!error && Array.isArray(data) && data.length) {
+                        this.renderRoomsUI(data);
+                        return;
+                    }
+                } catch (_) { /* ignore and fall back */ }
+            }
+            // Fallback placeholder rooms
+            const names = ['Room 1', 'Room 2', 'Room 3', 'Room 4', 'Room 5'];
+            this.renderRoomsUI(names.map(n => ({ name: n, status: 'open' })));
+        } catch (e) {
+            const container = document.getElementById('roomsList');
+            if (container) container.innerHTML = '<p style="opacity:.7;">Rooms unavailable</p>';
+        }
+    }
+
+    renderRoomsUI(rooms) {
+        const container = document.getElementById('roomsList');
+        if (!container) return;
+        const byName = new Map(rooms.map(r => [r.name, r]));
+        const names = ['Room 1', 'Room 2', 'Room 3', 'Room 4', 'Room 5'];
+        container.innerHTML = names.map(name => {
+            const r = byName.get(name) || { name, status: 'open' };
+            const status = r.status || 'open';
+            return `
+                <div class="player-item">
+                    <div class="player-info">
+                        <span class="player-name">${name}</span>
+                        <span class="player-status">${status}</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="challenge-btn" onclick="multiplayerManager.joinRoom('${name}')">Join</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async joinRoom(name) {
+        // Placeholder: just annotate URL and notify
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('room', name);
+            window.history.replaceState({}, '', url.toString());
+            this.showNotification(`Joined ${name} (placeholder)`, 'info');
+        } catch (e) {}
+    }
+
+    async leaveRoom(name) {
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('room') === name) {
+                url.searchParams.delete('room');
+                window.history.replaceState({}, '', url.toString());
+            }
+            this.showNotification(`Left ${name}`, 'info');
+            this.loadRooms();
+        } catch (e) {}
+    }
+
+    async startGameFromRoom(name) {
+        // Placeholder: require two users logic not enforced here
+        try {
+            await this.startMultiplayerGame(this.currentUser, this.currentUser);
+        } catch (e) {}
+    }
+    // --- End Minimal Rooms ---
+
     async processInviteLink() {
         try {
             const urlParams = new URLSearchParams(window.location.search);

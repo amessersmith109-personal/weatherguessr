@@ -80,3 +80,25 @@ CREATE POLICY "Allow public insert/update" ON multiplayer_games
 
 -- Success message
 SELECT 'Multiplayer tables created successfully!' as status;
+
+-- 4. Rooms (beta)
+CREATE TABLE IF NOT EXISTS rooms (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50) UNIQUE NOT NULL,
+  host_username VARCHAR(50),
+  guest_username VARCHAR(50),
+  status VARCHAR(20) DEFAULT 'open', -- open, in_game
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rooms_name ON rooms(name);
+
+ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read access" ON rooms;
+CREATE POLICY "Allow public read access" ON rooms
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert/update" ON rooms;
+CREATE POLICY "Allow public insert/update" ON rooms
+  FOR ALL USING (true);

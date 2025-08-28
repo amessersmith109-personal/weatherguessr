@@ -88,6 +88,7 @@ class MultiplayerManager {
             // Load initial data
             await this.loadOnlinePlayers();
             await this.loadPendingInvitations();
+            await this.processInviteLink();
             
         } catch (error) {
             console.error('Error going online:', error);
@@ -142,6 +143,19 @@ class MultiplayerManager {
             }
         }, 10000);
     }
+
+    async expireOldInvitations() {
+        try {
+            const nowIso = new Date().toISOString();
+            await supabase
+                .from('game_invitations')
+                .update({ status: 'expired' })
+                .eq('status', 'pending')
+                .lt('expires_at', nowIso);
+        } catch (e) {
+            console.error('Error expiring invitations:', e);
+        }
+    }
     
     async loadOnlinePlayers() {
         try {
@@ -149,7 +163,6 @@ class MultiplayerManager {
             const { data, error } = await supabase
                 .from('online_players')
                 .select('*')
-                .eq('is_available', true)
                 .neq('username', this.currentUser)
                 .gte('last_seen', thirtyMinutesAgo)
                 .order('last_seen', { ascending: false });
@@ -167,6 +180,7 @@ class MultiplayerManager {
     async loadPendingInvitations() {
         try {
             const nowIso = new Date().toISOString();
+            await this.expireOldInvitations();
             const { data, error } = await supabase
                 .from('game_invitations')
                 .select('*')
@@ -221,6 +235,35 @@ class MultiplayerManager {
         } catch (error) {
             console.error('Error sending invitation:', error);
             this.showNotification(`❌ Failed to send challenge to ${toUsername}`, 'error');
+        }
+    }
+
+    async copyInviteLink(toUsername) {
+        try {
+            if (toUsername === this.currentUser) {
+                alert('You cannot challenge yourself!');
+                return;
+            }
+            const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+            const { data, error } = await supabase
+                .from('game_invitations')
+                .insert({
+                    from_username: this.currentUser,
+                    to_username: toUsername,
+                    status: 'pending',
+                    expires_at: expiresAt
+                })
+                .select('id')
+                .single();
+            if (error) throw error;
+
+            const url = new URL(window.location.href);
+            url.searchParams.set('inviteId', data.id);
+            await navigator.clipboard.writeText(url.toString());
+            this.showNotification('🔗 Invite link copied to clipboard', 'success');
+        } catch (e) {
+            console.error('Error copying invite link:', e);
+            this.showNotification('❌ Failed to copy invite link', 'error');
         }
     }
     
@@ -591,6 +634,13 @@ class MultiplayerManager {
         document.getElementById('gameScreen').classList.remove('active');
         document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('multiplayerScreen').classList.add('active');
+        // If URL contains an inviteId, surface it here as a prompt
+        const urlParams = new URLSearchParams(window.location.search);
+        const inviteId = urlParams.get('inviteId');
+        if (inviteId) {
+            // Load that invite and show it prominently
+            this.highlightInvite(inviteId);
+        }
     }
     
     updateOnlinePlayersUI() {
@@ -603,17 +653,22 @@ class MultiplayerManager {
             return;
         }
         
-        container.innerHTML = this.onlinePlayers.map(player => `
+        container.innerHTML = this.onlinePlayers.map(player => {
+            const isAvailable = !!player.is_available;
+            const statusLabel = isAvailable ? '🟢 Available' : '🟠 In game';
+            const disabledAttr = isAvailable ? '' : 'disabled style="opacity:0.6; cursor:not-allowed;"';
+            return `
             <div class="player-item">
                 <div class="player-info">
                     <span class="player-name">${player.username}</span>
-                    <span class="player-status">🟢 Online</span>
+                    <span class="player-status">${statusLabel}</span>
                 </div>
-                <button class="challenge-btn" onclick="multiplayerManager.sendInvitation('${player.username}')">
-                    Challenge
-                </button>
-            </div>
-        `).join('');
+                <div style="display:flex; gap:6px;">
+                    <button class="challenge-btn" ${disabledAttr} onclick="multiplayerManager.sendInvitation('${player.username}')">Challenge</button>
+                    <button class="challenge-btn" onclick="multiplayerManager.copyInviteLink('${player.username}')">Copy Link</button>
+                </div>
+            </div>`;
+        }).join('');
 
         const header = document.getElementById('onlinePlayersHeader');
         if (header) header.textContent = `👥 Online Players (${this.onlinePlayers.length})`;
@@ -648,6 +703,57 @@ class MultiplayerManager {
         const header = document.getElementById('invitationsHeader');
         if (header) header.textContent = `📨 Invitations (${this.pendingInvitations.length})`;
     }
+
+    async processInviteLink() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const inviteId = urlParams.get('inviteId');
+            if (!inviteId) return;
+            const { data, error } = await supabase
+                .from('game_invitations')
+                .select('*')
+                .eq('id', inviteId)
+                .single();
+            if (error || !data) return;
+            const now = new Date();
+            const expiresAt = new Date(data.expires_at);
+            if (data.status !== 'pending' || expiresAt <= now) {
+                this.showNotification('⏰ Invite link is expired or invalid', 'error');
+                return;
+            }
+            if (data.to_username !== this.currentUser) {
+                this.showNotification(`This invite is for ${data.to_username}.`, 'info');
+                return;
+            }
+            // Bring user to lobby and highlight invite
+            this.showMultiplayerLobby();
+            this.highlightInvite(inviteId);
+        } catch (e) {
+            console.error('processInviteLink error:', e);
+        }
+    }
+
+    async highlightInvite(inviteId) {
+        try {
+            // Ensure invitations loaded
+            if (!this.pendingInvitations.find(i => i.id === Number(inviteId))) {
+                await this.loadPendingInvitations();
+            }
+            const container = document.getElementById('invitationsList');
+            if (!container) return;
+            const cards = Array.from(container.children);
+            cards.forEach(card => card.style.outline = '');
+            // Roughly find the card by matching onclick if present
+            const match = cards.find(card => card.innerHTML.includes(`respondToInvitation(${inviteId}, 'accepted')`));
+            if (match) {
+                match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                match.style.outline = '3px solid #ffd700';
+                setTimeout(() => { match.style.outline = ''; }, 4000);
+            }
+        } catch (e) {
+            // no-op
+        }
+    }
     
     handleOnlinePlayersChange(payload) {
         // Reload list to honor filters (availability and 30-minute activity)
@@ -673,7 +779,12 @@ class MultiplayerManager {
                     this.showNotification(`🎉 ${payload.new.to_username} accepted your challenge!`, 'success');
                 } else if (payload.new.status === 'declined') {
                     this.showNotification(`😔 ${payload.new.to_username} declined your challenge`, 'info');
+                } else if (payload.new.status === 'expired') {
+                    this.showNotification(`⏰ Invite to ${payload.new.to_username} expired`, 'info');
                 }
+            }
+            if (payload.new.from_username === this.currentUser && payload.new.status === 'expired') {
+                this.showNotification(`⏰ Your invite to ${payload.new.to_username} expired`, 'info');
             }
         } else if (payload.eventType === 'DELETE') {
             this.pendingInvitations = this.pendingInvitations.filter(i => i.id !== payload.old.id);

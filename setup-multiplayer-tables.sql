@@ -102,3 +102,13 @@ CREATE POLICY "Allow public read access" ON rooms
 DROP POLICY IF EXISTS "Allow public insert/update" ON rooms;
 CREATE POLICY "Allow public insert/update" ON rooms
   FOR ALL USING (true);
+
+-- Seed default rooms
+INSERT INTO rooms (name, status)
+VALUES
+  ('Room 1', 'open'),
+  ('Room 2', 'open'),
+  ('Room 3', 'open'),
+  ('Room 4', 'open'),
+  ('Room 5', 'open')
+ON CONFLICT (name) DO NOTHING;

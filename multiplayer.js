@@ -285,12 +285,12 @@ class MultiplayerManager {
     async createGameLink() {
         try {
             // Create a placeholder game with player2 set to this.currentUser for now; actual join will use invite flow
-            // Instead, we create a short-lived lobby game where we are player1 and player2 is also our name until someone joins via invite (keeps link minimal).
+            // Instead, create a lobby game where we are player1 and player2 is 'TBD' until someone joins via the link.
             const { data, error } = await supabase
                 .from('multiplayer_games')
                 .insert({
                     player1: this.currentUser,
-                    player2: this.currentUser,
+                    player2: 'TBD',
                     current_round: 1,
                     player1_wins: 0,
                     player2_wins: 0,
@@ -804,8 +804,23 @@ class MultiplayerManager {
             const p1 = this.normalizeName(data.player1);
             const p2 = this.normalizeName(data.player2);
             if (me !== p1 && me !== p2) {
-                this.showNotification('You are not part of this game link.', 'error');
-                return;
+                // If player2 is TBD, claim that slot
+                if (data.player2 === 'TBD') {
+                    try {
+                        const { error: updErr, data: updData } = await supabase
+                            .from('multiplayer_games')
+                            .update({ player2: this.currentUser, updated_at: new Date().toISOString() })
+                            .eq('id', Number(gameId))
+                            .select()
+                            .single();
+                        if (!updErr && updData) {
+                            data.player2 = this.currentUser;
+                        }
+                    } catch (e) {}
+                } else {
+                    this.showNotification('You are not part of this game link.', 'error');
+                    return;
+                }
             }
             this.currentGame = data;
             this.showMultiplayerGame();

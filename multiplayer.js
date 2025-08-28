@@ -427,6 +427,12 @@ class MultiplayerManager {
         const gameState = this.normalizeGameState(this.currentGame.game_state);
         this.currentGame.game_state = gameState;
         this.updateGameUI(gameState);
+        // Force-enable local roll button in case initial disabled attribute persists
+        try {
+            const my = this.getMySide();
+            const btn = document.getElementById(my + 'RollBtn');
+            if (btn) btn.disabled = false;
+        } catch (e) {}
     }
     
     async rollState(playerSide) {
@@ -591,6 +597,14 @@ class MultiplayerManager {
         
         // Handle round state
         this.handleRoundState(state.roundState, state.roundWinner);
+        
+        // Ensure my roll is enabled unless completed
+        try {
+            const my = this.getMySide();
+            const btn = document.getElementById(my + 'RollBtn');
+            const myState = state[my];
+            if (btn && myState && myState.usedCategories.length < 8) btn.disabled = false;
+        } catch (e) {}
     }
     
     updatePlayerSide(playerSide, playerState) {

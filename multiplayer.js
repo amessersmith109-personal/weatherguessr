@@ -13,6 +13,20 @@ class MultiplayerManager {
         this.initializeMultiplayer();
     }
     
+    normalizeName(name) {
+        return (name || '').trim().toLowerCase();
+    }
+    
+    getMySide() {
+        if (!this.currentGame) return null;
+        const me = this.normalizeName(this.currentUser);
+        const p1 = this.normalizeName(this.currentGame.player1);
+        const p2 = this.normalizeName(this.currentGame.player2);
+        if (me && me === p1) return 'player1';
+        if (me && me === p2) return 'player2';
+        return null;
+    }
+    
     async initializeMultiplayer() {
         if (!supabase) {
             console.error('Supabase not configured for multiplayer');
@@ -494,10 +508,10 @@ class MultiplayerManager {
         document.getElementById('player1Name').textContent = this.currentGame.player1;
         document.getElementById('player2Name').textContent = this.currentGame.player2;
         
-        // Highlight my side
-        const meIsPlayer1 = this.currentGame.player1 === this.currentUser;
-        document.getElementById('player1Side').style.outline = meIsPlayer1 ? '3px solid #667eea' : '';
-        document.getElementById('player2Side').style.outline = !meIsPlayer1 ? '3px solid #667eea' : '';
+        // Highlight my side (case-insensitive)
+        const mySide = this.getMySide();
+        document.getElementById('player1Side').style.outline = mySide === 'player1' ? '3px solid #667eea' : '';
+        document.getElementById('player2Side').style.outline = mySide === 'player2' ? '3px solid #667eea' : '';
 
         // Update scores
         document.getElementById('player1Score').textContent = gameState.player1_wins || 0;
@@ -522,8 +536,7 @@ class MultiplayerManager {
         const currentScore = document.getElementById(playerSide + 'CurrentScore');
         const status = document.getElementById(playerSide + 'Status');
 
-        const isMySide = (playerSide === 'player1' && this.currentGame.player1 === this.currentUser) ||
-                         (playerSide === 'player2' && this.currentGame.player2 === this.currentUser);
+        const isMySide = this.getMySide() === playerSide;
         
         // Update state display
         if (playerState.currentState) {

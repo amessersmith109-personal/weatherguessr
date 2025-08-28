@@ -234,6 +234,10 @@ class WeatherguessrGame {
         }
 
         localStorage.setItem('weatherguessr_scoreHistory', JSON.stringify(scoreHistory));
+        
+        // Note: This leaderboard is local to each device/browser
+        // To share scores between players, we'd need a backend server
+        // For now, each player sees their own personal leaderboard
     }
 
     loadScoreHistory() {
@@ -288,7 +292,7 @@ class WeatherguessrGame {
         const historyList = document.getElementById('scoreHistoryList');
         
         // Update modal title
-        document.querySelector('#scoreHistoryModal .modal-content h2').textContent = '🏆 All-Time Leaderboard';
+        document.querySelector('#scoreHistoryModal .modal-content h2').textContent = '🏆 Personal Leaderboard';
         
         if (history.length === 0) {
             historyList.innerHTML = '<p>No scores yet! Be the first to play!</p>';
@@ -313,6 +317,9 @@ class WeatherguessrGame {
                 `;
             }).join('');
         }
+        
+        // Add note about local leaderboard
+        historyList.innerHTML += '<p style="text-align: center; margin-top: 20px; font-size: 0.9em; color: #666;">📱 This is your personal leaderboard (scores are saved locally)</p>';
 
         document.getElementById('scoreHistoryModal').style.display = 'block';
     }
@@ -346,11 +353,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Initialize the game
         window.weatherguessrGame = new WeatherguessrGame();
         
-        // Add leaderboard button event listener
+        // Add leaderboard button event listener - this needs to work from the main menu
         const leaderboardBtn = document.getElementById('leaderboardBtn');
         if (leaderboardBtn) {
             leaderboardBtn.addEventListener('click', () => {
-                if (window.weatherguessrGame) {
+                // Create a temporary game instance just for showing leaderboard if needed
+                if (!window.weatherguessrGame || window.weatherguessrGame.gameState === 'username') {
+                    const tempGame = new WeatherguessrGame();
+                    tempGame.showLeaderboard();
+                } else {
                     window.weatherguessrGame.showLeaderboard();
                 }
             });

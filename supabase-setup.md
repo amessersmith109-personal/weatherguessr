@@ -37,10 +37,14 @@ CREATE POLICY "Allow public insert access" ON scores
   FOR INSERT WITH CHECK (true);
 ```
 
-### 3. Get Your API Keys
+### 3. Get Your API Keys ✅ COMPLETED
 1. Go to Settings → API
 2. Copy your "Project URL" and "anon public" key
-3. Replace the placeholders in `script.js`
+3. Replace the placeholders in `config.js`
+
+**✅ Your Supabase is now configured!**
+- Project URL: `https://mlouxvhkfcjclkcqengy.supabase.co`
+- API Key: Configured in `config.js`
 
 ## Benefits:
 ✅ **Global leaderboard** - All players see the same scores  

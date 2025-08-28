@@ -3,8 +3,8 @@
 
 const CONFIG = {
     // Supabase Configuration
-    SUPABASE_URL: 'YOUR_SUPABASE_URL_HERE',
-    SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY_HERE',
+    SUPABASE_URL: 'https://mlouxvhkfcjclkcqengy.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sb3V4dmhrZmNqY2xrY3Flbmd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODMyMDEsImV4cCI6MjA3MTk1OTIwMX0.vP9vaUMBSf3Q2whKkXVgZWp6K6xvlN0FXTtNUedJ4uM',
     
     // Game Configuration
     MAX_SCORES_DISPLAYED: 20,

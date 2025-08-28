@@ -159,6 +159,7 @@ class MultiplayerManager {
             if (error) throw error;
             
             this.pendingInvitations = data || [];
+            console.log('Loaded invitations:', this.pendingInvitations);
             this.updateInvitationsUI();
             
         } catch (error) {
@@ -168,6 +169,12 @@ class MultiplayerManager {
     
     async sendInvitation(toUsername) {
         try {
+            // Don't send invitation to yourself
+            if (toUsername === this.currentUser) {
+                alert('You cannot challenge yourself!');
+                return;
+            }
+            
             const { error } = await supabase
                 .from('game_invitations')
                 .insert({
@@ -180,8 +187,20 @@ class MultiplayerManager {
             
             console.log(`Invitation sent to ${toUsername}`);
             
+            // Show success notification
+            this.showNotification(`🎮 Challenge sent to ${toUsername}!`, 'success');
+            
+            // Update the button to show "Sent"
+            const challengeBtn = document.querySelector(`[onclick="multiplayerManager.sendInvitation('${toUsername}')"]`);
+            if (challengeBtn) {
+                challengeBtn.textContent = '✅ Sent';
+                challengeBtn.disabled = true;
+                challengeBtn.style.backgroundColor = '#28a745';
+            }
+            
         } catch (error) {
             console.error('Error sending invitation:', error);
+            this.showNotification(`❌ Failed to send challenge to ${toUsername}`, 'error');
         }
     }
     
@@ -607,11 +626,20 @@ class MultiplayerManager {
     
     handleInvitationChange(payload) {
         if (payload.eventType === 'INSERT' && payload.new.to_username === this.currentUser) {
+            // New invitation received
             this.pendingInvitations.push(payload.new);
+            this.showNotification(`🎮 ${payload.new.from_username} has challenged you!`, 'info');
         } else if (payload.eventType === 'UPDATE') {
             const index = this.pendingInvitations.findIndex(i => i.id === payload.new.id);
             if (index !== -1) {
                 this.pendingInvitations[index] = payload.new;
+                
+                // Show notification for status changes
+                if (payload.new.status === 'accepted') {
+                    this.showNotification(`🎉 ${payload.new.to_username} accepted your challenge!`, 'success');
+                } else if (payload.new.status === 'declined') {
+                    this.showNotification(`😔 ${payload.new.to_username} declined your challenge`, 'info');
+                }
             }
         } else if (payload.eventType === 'DELETE') {
             this.pendingInvitations = this.pendingInvitations.filter(i => i.id !== payload.old.id);
@@ -625,6 +653,28 @@ class MultiplayerManager {
             this.currentGame = payload.new;
             this.updateGameUI(payload.new.game_state);
         }
+    }
+    
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span>${message}</span>
+                <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+            </div>
+        `;
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 5000);
     }
     
     cleanup() {

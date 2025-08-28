@@ -390,13 +390,15 @@ class MultiplayerManager {
                 currentState: null,
                 score: 0,
                 usedCategories: [],
-                isReady: false
+                isReady: false,
+                preReady: false
             },
             player2: {
                 currentState: null,
                 score: 0,
                 usedCategories: [],
-                isReady: false
+                isReady: false,
+                preReady: false
             },
             roundState: 'waiting', // waiting, rolling, playing, complete
             roundWinner: null
@@ -410,10 +412,12 @@ class MultiplayerManager {
         out.player1.usedCategories = Array.isArray(out.player1.usedCategories) ? out.player1.usedCategories : [];
         out.player1.score = Number.isFinite(out.player1.score) ? out.player1.score : 0;
         out.player1.isReady = !!out.player1.isReady;
+        out.player1.preReady = !!out.player1.preReady;
         out.player2 = { ...base.player2, ...(out.player2 || {}) };
         out.player2.usedCategories = Array.isArray(out.player2.usedCategories) ? out.player2.usedCategories : [];
         out.player2.score = Number.isFinite(out.player2.score) ? out.player2.score : 0;
         out.player2.isReady = !!out.player2.isReady;
+        out.player2.preReady = !!out.player2.preReady;
         out.roundState = out.roundState || 'waiting';
         return out;
     }
@@ -600,7 +604,7 @@ class MultiplayerManager {
         const isMySide = this.getMySide() === playerSide;
         // Debug traces to diagnose disabled state
         try {
-            console.debug('[MP] updatePlayerSide', { playerSide, isMySide, isReady: playerState.isReady, used: playerState.usedCategories?.length });
+            console.debug('[MP] updatePlayerSide', { playerSide, isMySide, isReady: playerState.isReady, preReady: playerState.preReady, used: playerState.usedCategories?.length });
         } catch (e) {}
         
         // Update state display
@@ -612,8 +616,8 @@ class MultiplayerManager {
             stateName.textContent = 'Waiting for roll...';
         }
         
-        // Update roll button (only enable for my side)
-        rollBtn.disabled = !isMySide || playerState.isReady || playerState.usedCategories.length >= 8;
+        // Update roll button (enable for my side unless completed)
+        rollBtn.disabled = !isMySide || playerState.usedCategories.length >= 8;
         try {
             console.debug('[MP] rollBtn.disabled', rollBtn.disabled);
         } catch (e) {}
@@ -621,16 +625,38 @@ class MultiplayerManager {
         // Update score
         currentScore.textContent = playerState.score;
         
-        // Update status
+        // Update status with preReady
         if (playerState.usedCategories.length >= 8) {
             status.textContent = 'Completed';
             status.className = 'player-status completed';
-        } else if (playerState.isReady) {
-            status.textContent = 'Playing';
+        } else if (playerState.preReady) {
+            status.textContent = 'Ready';
             status.className = 'player-status playing';
         } else {
             status.textContent = 'Waiting';
             status.className = 'player-status waiting';
+        }
+        
+        // Add/Update Ready button for my side
+        let readyBtn = sideElement.querySelector('.pre-ready-btn');
+        if (!readyBtn) {
+            readyBtn = document.createElement('button');
+            readyBtn.className = 'btn btn-secondary pre-ready-btn';
+            readyBtn.style.marginTop = '6px';
+            readyBtn.textContent = 'I\'m Ready';
+            status.parentElement.appendChild(readyBtn);
+        }
+        readyBtn.style.display = isMySide && playerState.usedCategories.length < 8 ? 'inline-block' : 'none';
+        readyBtn.textContent = playerState.preReady ? 'Ready ✓' : 'I\'m Ready';
+        if (isMySide) {
+            readyBtn.onclick = async () => {
+                const gs = this.normalizeGameState({ ...this.currentGame.game_state });
+                gs[playerSide].preReady = !gs[playerSide].preReady;
+                await this.updateGameState(gs);
+                this.sendGameState();
+            };
+        } else {
+            readyBtn.onclick = null;
         }
         
         // Update categories

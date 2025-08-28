@@ -72,6 +72,15 @@ class WeatherguessrGame {
                 this.showMainMenu();
             }
         });
+
+        // Create Game Link
+        const createLinkBtn = document.getElementById('createGameLinkBtn');
+        if (createLinkBtn) {
+            createLinkBtn.addEventListener('click', async () => {
+                if (!multiplayerManager) return alert('Multiplayer not ready');
+                await multiplayerManager.createGameLink();
+            });
+        }
     }
 
     continueToMainMenu() {
@@ -84,6 +93,15 @@ class WeatherguessrGame {
         this.currentUser = username;
         document.getElementById('welcomeUsername').textContent = username;
         this.showMainMenu();
+
+        // If URL contains a gameId/inviteId, process after username is set
+        if (supabase) {
+            if (!multiplayerManager) {
+                multiplayerManager = new MultiplayerManager();
+                try { window.multiplayerManager = multiplayerManager; } catch (e) {}
+            }
+            multiplayerManager.goOnline(this.currentUser);
+        }
     }
 
     showMainMenu() {

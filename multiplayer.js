@@ -103,6 +103,7 @@ class MultiplayerManager {
             await this.loadOnlinePlayers();
             await this.loadPendingInvitations();
             await this.processInviteLink();
+            await this.processGameLink();
             
         } catch (error) {
             console.error('Error going online:', error);
@@ -280,6 +281,34 @@ class MultiplayerManager {
             this.showNotification('❌ Failed to copy invite link', 'error');
         }
     }
+
+    async createGameLink() {
+        try {
+            // Create a placeholder game with player2 set to this.currentUser for now; actual join will use invite flow
+            // Instead, we create a short-lived lobby game where we are player1 and player2 is also our name until someone joins via invite (keeps link minimal).
+            const { data, error } = await supabase
+                .from('multiplayer_games')
+                .insert({
+                    player1: this.currentUser,
+                    player2: this.currentUser,
+                    current_round: 1,
+                    player1_wins: 0,
+                    player2_wins: 0,
+                    game_state: this.getInitialGameState(),
+                    status: 'active'
+                })
+                .select('id')
+                .single();
+            if (error) throw error;
+            const url = new URL(window.location.href);
+            url.searchParams.set('gameId', data.id);
+            await navigator.clipboard.writeText(url.toString());
+            this.showNotification('🔗 Game link copied to clipboard', 'success');
+        } catch (e) {
+            console.error('createGameLink error', e);
+            this.showNotification('❌ Failed to create game link', 'error');
+        }
+    }
     
     async respondToInvitation(invitationId, response) {
         try {
@@ -340,6 +369,12 @@ class MultiplayerManager {
             } catch (e) {
                 console.error('Error updating availability:', e);
             }
+            // Update URL with gameId
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('gameId', String(this.currentGame.id));
+                window.history.replaceState({}, '', url.toString());
+            } catch (e) {}
             
         } catch (error) {
             console.error('Error starting multiplayer game:', error);
@@ -754,6 +789,32 @@ class MultiplayerManager {
         }
     }
 
+    async processGameLink() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameId = urlParams.get('gameId');
+            if (!gameId) return;
+            const { data, error } = await supabase
+                .from('multiplayer_games')
+                .select('*')
+                .eq('id', Number(gameId))
+                .single();
+            if (error || !data) return;
+            const me = this.normalizeName(this.currentUser);
+            const p1 = this.normalizeName(data.player1);
+            const p2 = this.normalizeName(data.player2);
+            if (me !== p1 && me !== p2) {
+                this.showNotification('You are not part of this game link.', 'error');
+                return;
+            }
+            this.currentGame = data;
+            this.showMultiplayerGame();
+            this.initializeGameState();
+        } catch (e) {
+            console.error('processGameLink error:', e);
+        }
+    }
+
     async highlightInvite(inviteId) {
         try {
             // Ensure invitations loaded
@@ -824,6 +885,12 @@ class MultiplayerManager {
                 this.initializeGameState();
                 // Mark busy
                 supabase.from('online_players').update({ is_available: false, last_seen: new Date().toISOString() }).eq('username', this.currentUser).then(() => {}).catch(() => {});
+                // Update URL gameId
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('gameId', String(this.currentGame.id));
+                    window.history.replaceState({}, '', url.toString());
+                } catch (e) {}
             }
             return;
         }

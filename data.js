@@ -163,7 +163,7 @@ const weatherData = {
         "Hawaii": 100
     },
 
-    // Lowest recorded temperature (Fahrenheit)
+    // Lowest recorded temperature (Fahrenheit) - Lower (more negative) values rank higher
     lowestTemp: {
         "Alaska": -80,
         "Montana": -70,
@@ -450,9 +450,13 @@ const stateFlags = {
 // Helper function to get rankings for a category
 function getRankings(category) {
     const data = weatherData[category];
-    const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]); // Sort by value (highest first)
-    const rankings = {};
     
+    // For lowest temperature, we want the lowest (most negative) value to rank #1
+    // For all other categories, we want the highest value to rank #1
+    const sortOrder = category === 'lowestTemp' ? (a, b) => a[1] - b[1] : (a, b) => b[1] - a[1];
+    const sorted = Object.entries(data).sort(sortOrder);
+    
+    const rankings = {};
     sorted.forEach((entry, index) => {
         rankings[entry[0]] = index + 1;
     });

@@ -163,14 +163,6 @@
             </div>
         </div>
 
-        <!-- Score History Modal -->
-        <div id="scoreHistoryModal" class="modal">
-            <div class="modal-content">
-                <h2>📊 Score History</h2>
-                <div id="scoreHistoryList"></div>
-                <button id="closeHistoryBtn" class="btn btn-primary">Close</button>
-            </div>
-        </div>
     </div>
 
     <!-- Multiplayer Lobby Screen -->
@@ -183,7 +175,7 @@
             
             <div class="lobby-content">
                 <div class="online-players-section">
-                    <h2>👥 Online Players</h2>
+                    <h2 id="onlinePlayersHeader">👥 Online Players</h2>
                     <div id="onlinePlayersList" class="players-list">
                         <p>Loading online players...</p>
                     </div>
@@ -191,7 +183,7 @@
                 </div>
                 
                 <div class="invitations-section">
-                    <h2>📨 Invitations</h2>
+                    <h2 id="invitationsHeader">📨 Invitations</h2>
                     <div id="invitationsList" class="invitations-list">
                         <p>No pending invitations</p>
                     </div>
@@ -307,6 +299,15 @@
         <div class="loading-content">
             <div class="loading-spinner">🌤️</div>
             <h2>Loading Weather Data...</h2>
+        </div>
+    </div>
+
+    <!-- Score History / Leaderboard Modal (moved outside hidden screens) -->
+    <div id="scoreHistoryModal" class="modal">
+        <div class="modal-content">
+            <h2>📊 Score History</h2>
+            <div id="scoreHistoryList"></div>
+            <button id="closeHistoryBtn" class="btn btn-primary">Close</button>
         </div>
     </div>
 

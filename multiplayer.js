@@ -7,6 +7,8 @@ class MultiplayerManager {
         this.onlinePlayers = [];
         this.pendingInvitations = [];
         this.realTimeSubscriptions = [];
+        this.heartbeatInterval = null;
+        this.pollInterval = null;
         
         this.initializeMultiplayer();
     }
@@ -22,6 +24,9 @@ class MultiplayerManager {
         
         // Start heartbeat to keep player online
         this.startHeartbeat();
+
+        // Start polling as a fallback in case realtime isn't active
+        this.startPolling();
     }
     
     setupRealTimeSubscriptions() {
@@ -50,12 +55,9 @@ class MultiplayerManager {
         // Listen for game state changes
         const gameStateSubscription = supabase
             .channel('multiplayer_games')
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'multiplayer_games' },
-                (payload) => {
-                    this.handleGameStateChange(payload);
-                }
-            )
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'multiplayer_games' }, (payload) => {
+                this.handleGameChange(payload);
+            })
             .subscribe();
             
         this.realTimeSubscriptions.push(
@@ -114,7 +116,7 @@ class MultiplayerManager {
     
     startHeartbeat() {
         // Update last_seen every 30 seconds
-        setInterval(async () => {
+        this.heartbeatInterval = setInterval(async () => {
             if (this.isOnline && this.currentUser) {
                 try {
                     await supabase
@@ -128,13 +130,28 @@ class MultiplayerManager {
         }, 30000);
     }
     
+    startPolling() {
+        // Poll as a fallback if realtime DB changes are not configured
+        if (this.pollInterval) return;
+        this.pollInterval = setInterval(async () => {
+            if (this.isOnline) {
+                await Promise.all([
+                    this.loadOnlinePlayers(),
+                    this.loadPendingInvitations()
+                ]);
+            }
+        }, 10000);
+    }
+    
     async loadOnlinePlayers() {
         try {
+            const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             const { data, error } = await supabase
                 .from('online_players')
                 .select('*')
                 .eq('is_available', true)
                 .neq('username', this.currentUser)
+                .gte('last_seen', thirtyMinutesAgo)
                 .order('last_seen', { ascending: false });
                 
             if (error) throw error;
@@ -149,11 +166,13 @@ class MultiplayerManager {
     
     async loadPendingInvitations() {
         try {
+            const nowIso = new Date().toISOString();
             const { data, error } = await supabase
                 .from('game_invitations')
                 .select('*')
                 .eq('to_username', this.currentUser)
                 .eq('status', 'pending')
+                .gte('expires_at', nowIso)
                 .order('created_at', { ascending: false });
                 
             if (error) throw error;
@@ -180,7 +199,8 @@ class MultiplayerManager {
                 .insert({
                     from_username: this.currentUser,
                     to_username: toUsername,
-                    status: 'pending'
+                    status: 'pending',
+                    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString()
                 });
                 
             if (error) throw error;
@@ -188,7 +208,7 @@ class MultiplayerManager {
             console.log(`Invitation sent to ${toUsername}`);
             
             // Show success notification
-            this.showNotification(`🎮 Challenge sent to ${toUsername}!`, 'success');
+            this.showNotification(`🎮 Challenge sent to ${toUsername}! (expires in 5 min)`, 'success');
             
             // Update the button to show "Sent"
             const challengeBtn = document.querySelector(`[onclick="multiplayerManager.sendInvitation('${toUsername}')"]`);
@@ -253,6 +273,16 @@ class MultiplayerManager {
             this.currentGame = data;
             this.showMultiplayerGame();
             this.initializeGameState();
+
+            // Mark current user as busy/in-game
+            try {
+                await supabase
+                    .from('online_players')
+                    .update({ is_available: false, last_seen: new Date().toISOString() })
+                    .eq('username', this.currentUser);
+            } catch (e) {
+                console.error('Error updating availability:', e);
+            }
             
         } catch (error) {
             console.error('Error starting multiplayer game:', error);
@@ -568,6 +598,8 @@ class MultiplayerManager {
         
         if (this.onlinePlayers.length === 0) {
             container.innerHTML = '<p>No other players online</p>';
+            const header = document.getElementById('onlinePlayersHeader');
+            if (header) header.textContent = '👥 Online Players (0)';
             return;
         }
         
@@ -582,6 +614,9 @@ class MultiplayerManager {
                 </button>
             </div>
         `).join('');
+
+        const header = document.getElementById('onlinePlayersHeader');
+        if (header) header.textContent = `👥 Online Players (${this.onlinePlayers.length})`;
     }
     
     updateInvitationsUI() {
@@ -589,6 +624,8 @@ class MultiplayerManager {
         
         if (this.pendingInvitations.length === 0) {
             container.innerHTML = '<p>No pending invitations</p>';
+            const header = document.getElementById('invitationsHeader');
+            if (header) header.textContent = '📨 Invitations (0)';
             return;
         }
         
@@ -607,28 +644,25 @@ class MultiplayerManager {
                 </div>
             </div>
         `).join('');
+
+        const header = document.getElementById('invitationsHeader');
+        if (header) header.textContent = `📨 Invitations (${this.pendingInvitations.length})`;
     }
     
     handleOnlinePlayersChange(payload) {
-        if (payload.eventType === 'INSERT') {
-            this.onlinePlayers.push(payload.new);
-        } else if (payload.eventType === 'DELETE') {
-            this.onlinePlayers = this.onlinePlayers.filter(p => p.username !== payload.old.username);
-        } else if (payload.eventType === 'UPDATE') {
-            const index = this.onlinePlayers.findIndex(p => p.username === payload.new.username);
-            if (index !== -1) {
-                this.onlinePlayers[index] = payload.new;
-            }
-        }
-        
-        this.updateOnlinePlayersUI();
+        // Reload list to honor filters (availability and 30-minute activity)
+        this.loadOnlinePlayers();
     }
     
     handleInvitationChange(payload) {
+        const now = new Date();
         if (payload.eventType === 'INSERT' && payload.new.to_username === this.currentUser) {
-            // New invitation received
-            this.pendingInvitations.push(payload.new);
-            this.showNotification(`🎮 ${payload.new.from_username} has challenged you!`, 'info');
+            // New invitation received (ignore expired)
+            const expiresAt = new Date(payload.new.expires_at);
+            if (expiresAt > now && payload.new.status === 'pending') {
+                this.pendingInvitations.push(payload.new);
+                this.showNotification(`🎮 ${payload.new.from_username} has challenged you!`, 'info');
+            }
         } else if (payload.eventType === 'UPDATE') {
             const index = this.pendingInvitations.findIndex(i => i.id === payload.new.id);
             if (index !== -1) {
@@ -648,7 +682,20 @@ class MultiplayerManager {
         this.updateInvitationsUI();
     }
     
-    handleGameStateChange(payload) {
+    handleGameChange(payload) {
+        // If a game is created involving the current user, join it
+        if (payload.eventType === 'INSERT') {
+            const game = payload.new;
+            if (game.player1 === this.currentUser || game.player2 === this.currentUser) {
+                this.currentGame = game;
+                this.showMultiplayerGame();
+                this.initializeGameState();
+                // Mark busy
+                supabase.from('online_players').update({ is_available: false, last_seen: new Date().toISOString() }).eq('username', this.currentUser).then(() => {}).catch(() => {});
+            }
+            return;
+        }
+        
         if (payload.eventType === 'UPDATE' && this.currentGame && payload.new.id === this.currentGame.id) {
             this.currentGame = payload.new;
             this.updateGameUI(payload.new.game_state);
@@ -685,6 +732,16 @@ class MultiplayerManager {
         
         // Go offline
         this.goOffline();
+        
+        // Clear timers
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
     }
 }
 

@@ -105,6 +105,8 @@ class WeatherguessrGame {
         if (supabase && !multiplayerManager) {
             multiplayerManager = new MultiplayerManager();
             multiplayerManager.goOnline(this.currentUser);
+            // Ensure global access for inline handlers
+            try { window.multiplayerManager = multiplayerManager; } catch (e) {}
         }
         
         if (multiplayerManager) {
@@ -116,6 +118,9 @@ class WeatherguessrGame {
 
     showGameScreen() {
         document.getElementById('usernameScreen').classList.remove('active');
+        document.getElementById('mainMenuScreen').classList.remove('active');
+        document.getElementById('multiplayerScreen').classList.remove('active');
+        document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('gameScreen').classList.add('active');
     }
 

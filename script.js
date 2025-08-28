@@ -10,6 +10,7 @@ class WeatherguessrGame {
         this.currentUser = '';
         this.currentState = null;
         this.currentScore = 0;
+        this.categoryScores = {}; // category -> score for deterministic totals
         this.usedCategories = new Set();
         this.gameState = 'username'; // username, playing, gameOver
         this.bestScore = this.loadBestScore();
@@ -91,6 +92,13 @@ class WeatherguessrGame {
         document.getElementById('multiplayerScreen').classList.remove('active');
         document.getElementById('multiplayerGameScreen').classList.remove('active');
         document.getElementById('mainMenuScreen').classList.add('active');
+
+        // Ensure multiplayer presence and subscriptions are active even on main menu
+        if (supabase && this.currentUser && !multiplayerManager) {
+            multiplayerManager = new MultiplayerManager();
+            try { window.multiplayerManager = multiplayerManager; } catch (e) {}
+            multiplayerManager.goOnline(this.currentUser);
+        }
     }
 
     startSinglePlayer() {
@@ -152,9 +160,8 @@ class WeatherguessrGame {
             return;
         }
 
-        const availableStates = Object.keys(stateFlags).filter(state => 
-            !this.usedCategories.has(state)
-        );
+        // Select randomly from all states (do not couple to used categories)
+        const availableStates = Object.keys(stateFlags);
 
         if (availableStates.length === 0) {
             alert('No more states available!');
@@ -201,8 +208,9 @@ class WeatherguessrGame {
         const ranking = rankings[categoryName][this.currentState];
         const score = ranking > 100 ? 100 : ranking;
 
-        // Update game state
-        this.currentScore += score;
+        // Update game state deterministically
+        this.categoryScores[categoryName] = score;
+        this.currentScore = Object.values(this.categoryScores).reduce((sum, s) => sum + s, 0);
         this.usedCategories.add(categoryName);
 
         // Update UI
@@ -235,6 +243,7 @@ class WeatherguessrGame {
         this.currentScore = 0;
         this.usedCategories.clear();
         this.currentState = null;
+        this.categoryScores = {};
         
         // Reset UI
         document.getElementById('stateFlag').textContent = '🌤️';
@@ -255,6 +264,12 @@ class WeatherguessrGame {
 
     async endGame() {
         this.gameState = 'gameOver';
+        // Recompute final score deterministically before finalizing
+        const recomputed = Object.values(this.categoryScores).reduce((sum, s) => sum + s, 0);
+        if (recomputed !== this.currentScore) {
+            console.warn('Score mismatch detected. Display vs recomputed:', this.currentScore, recomputed, this.categoryScores);
+            this.currentScore = recomputed;
+        }
         
         // Check for new best score
         const isNewBest = this.currentScore < this.bestScore;

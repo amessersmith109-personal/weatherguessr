@@ -415,16 +415,17 @@ class MultiplayerManager {
         const out = { ...base, ...(state || {}) };
         out.player1 = { ...base.player1, ...(out.player1 || {}) };
         out.player1.usedCategories = Array.isArray(out.player1.usedCategories) ? out.player1.usedCategories : [];
-        out.player1.score = Number.isFinite(out.player1.score) ? out.player1.score : 0;
         out.player1.isReady = !!out.player1.isReady;
         out.player1.preReady = !!out.player1.preReady;
         out.player1.chosenScores = typeof out.player1.chosenScores === 'object' && out.player1.chosenScores !== null ? out.player1.chosenScores : {};
+        // Recompute total from chosenScores for determinism
+        out.player1.score = Object.values(out.player1.chosenScores).reduce((a, b) => a + (Number(b) || 0), 0);
         out.player2 = { ...base.player2, ...(out.player2 || {}) };
         out.player2.usedCategories = Array.isArray(out.player2.usedCategories) ? out.player2.usedCategories : [];
-        out.player2.score = Number.isFinite(out.player2.score) ? out.player2.score : 0;
         out.player2.isReady = !!out.player2.isReady;
         out.player2.preReady = !!out.player2.preReady;
         out.player2.chosenScores = typeof out.player2.chosenScores === 'object' && out.player2.chosenScores !== null ? out.player2.chosenScores : {};
+        out.player2.score = Object.values(out.player2.chosenScores).reduce((a, b) => a + (Number(b) || 0), 0);
         out.roundState = out.roundState || 'waiting';
         return out;
     }
@@ -491,14 +492,16 @@ class MultiplayerManager {
             }
             const ranking = rankings[categoryName][player.currentState];
             const score = ranking > 100 ? 100 : ranking;
-            player.score += score;
-            player.usedCategories.push(categoryName);
+            // Persist selection
             player.chosenScores[categoryName] = score;
+            player.usedCategories.push(categoryName);
+            // Recompute deterministic total
+            player.score = Object.values(player.chosenScores).reduce((a, b) => a + (Number(b) || 0), 0);
             if (player.usedCategories.length >= 8) {
                 if (gameState.player1.usedCategories.length >= 8 && 
                     gameState.player2.usedCategories.length >= 8) {
-                    const player1Score = gameState.player1.score;
-                    const player2Score = gameState.player2.score;
+                    const player1Score = Object.values(gameState.player1.chosenScores).reduce((a, b) => a + (Number(b) || 0), 0);
+                    const player2Score = Object.values(gameState.player2.chosenScores).reduce((a, b) => a + (Number(b) || 0), 0);
                     if (player1Score < player2Score) {
                         gameState.roundWinner = 'player1';
                         gameState.player1_wins = (gameState.player1_wins || 0) + 1;
@@ -1131,10 +1134,12 @@ class MultiplayerManager {
 
     async findAndJoinActiveGame(a, b) {
         try {
+            const A = (a || '').toLowerCase();
+            const B = (b || '').toLowerCase();
             const { data, error } = await supabase
                 .from('multiplayer_games')
                 .select('*')
-                .or(`and(player1.eq.${a},player2.eq.${b}),and(player1.eq.${b},player2.eq.${a})`)
+                .or(`and(player1.ilike.${A},player2.ilike.${B}),and(player1.ilike.${B},player2.ilike.${A})`)
                 .eq('status', 'active')
                 .order('created_at', { ascending: false })
                 .limit(1)

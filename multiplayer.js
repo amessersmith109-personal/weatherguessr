@@ -437,100 +437,79 @@ class MultiplayerManager {
     
     async rollState(playerSide) {
         if (!this.currentGame) return;
-        
-        const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
-        const player = gameState[playerSide];
-        
-        // Get available states (not used by either player)
-        const usedStates = new Set([
-            ...gameState.player1.usedCategories,
-            ...gameState.player2.usedCategories
-        ]);
-        
-        const availableStates = Object.keys(stateFlags).filter(state => 
-            !usedStates.has(state)
-        );
-        
-        if (availableStates.length === 0) {
-            alert('No more states available!');
-            return;
+        try {
+            const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
+            const player = gameState[playerSide];
+            const flagsOk = typeof stateFlags === 'object' && stateFlags != null;
+            const stateKeys = flagsOk ? Object.keys(stateFlags) : [];
+            const usedStates = new Set([
+                ...gameState.player1.usedCategories,
+                ...gameState.player2.usedCategories
+            ]);
+            let availableStates = stateKeys.filter(s => !usedStates.has(s));
+            if (!flagsOk || availableStates.length === 0) {
+                const fallback = (rankings && rankings.sunshine) ? Object.keys(rankings.sunshine) : [];
+                availableStates = fallback.length ? fallback : stateKeys; // last resort
+            }
+            console.debug('[MP] rollState start', { playerSide, flagsOk, stateKeys: stateKeys.length, available: availableStates.length });
+            if (availableStates.length === 0) {
+                alert('No more states available!');
+                return;
+            }
+            const selectedState = availableStates[Math.floor(Math.random() * availableStates.length)];
+            player.currentState = selectedState;
+            player.isReady = true;
+            if (gameState.player1.isReady && gameState.player2.isReady) {
+                gameState.roundState = 'playing';
+            }
+            this.currentGame.game_state = gameState;
+            console.debug('[MP] rollState picked', { playerSide, selectedState });
+            this.updateGameUI(gameState);
+            await this.updateGameState(gameState);
+            this.sendGameState();
+        } catch (e) {
+            console.error('[MP] rollState error', e);
         }
-        
-        // Random state selection
-        const randomIndex = Math.floor(Math.random() * availableStates.length);
-        const selectedState = availableStates[randomIndex];
-        
-        // Update game state
-        player.currentState = selectedState;
-        player.isReady = true;
-        
-        // Check if both players are ready
-        if (gameState.player1.isReady && gameState.player2.isReady) {
-            gameState.roundState = 'playing';
-        }
-        
-        // Apply locally and render immediately
-        this.currentGame.game_state = gameState;
-        try { console.debug('[MP] rollState', playerSide, selectedState); } catch (e) {}
-        this.updateGameUI(gameState);
-        
-        // Save to database (best-effort)
-        await this.updateGameState(gameState);
-        // Broadcast to peer
-        this.sendGameState();
     }
-    
+
     async selectCategory(playerSide, categoryName) {
         if (!this.currentGame) return;
-        
-        const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
-        const player = gameState[playerSide];
-        
-        if (!player.currentState || player.usedCategories.includes(categoryName)) {
-            return;
-        }
-        
-        // Get the ranking for this state in this category
-        const ranking = rankings[categoryName][player.currentState];
-        const score = ranking > 100 ? 100 : ranking;
-        
-        // Update player state
-        player.score += score;
-        player.usedCategories.push(categoryName);
-        
-        // Check if round is complete
-        if (player.usedCategories.length >= 8) {
-            // Check if both players have completed
-            if (gameState.player1.usedCategories.length >= 8 && 
-                gameState.player2.usedCategories.length >= 8) {
-                
-                // Determine round winner
-                const player1Score = gameState.player1.score;
-                const player2Score = gameState.player2.score;
-                
-                if (player1Score < player2Score) {
-                    gameState.roundWinner = 'player1';
-                    gameState.player1_wins = (gameState.player1_wins || 0) + 1;
-                } else if (player2Score < player1Score) {
-                    gameState.roundWinner = 'player2';
-                    gameState.player2_wins = (gameState.player2_wins || 0) + 1;
-                } else {
-                    gameState.roundWinner = 'tie';
-                }
-                
-                gameState.roundState = 'complete';
+        try {
+            const gameState = this.normalizeGameState({ ...this.currentGame.game_state });
+            const player = gameState[playerSide];
+            if (!player.currentState || player.usedCategories.includes(categoryName)) {
+                console.debug('[MP] selectCategory ignored', { playerSide, currentState: player.currentState, alreadyUsed: player.usedCategories.includes(categoryName) });
+                return;
             }
+            const ranking = rankings[categoryName][player.currentState];
+            const score = ranking > 100 ? 100 : ranking;
+            player.score += score;
+            player.usedCategories.push(categoryName);
+            if (player.usedCategories.length >= 8) {
+                if (gameState.player1.usedCategories.length >= 8 && 
+                    gameState.player2.usedCategories.length >= 8) {
+                    const player1Score = gameState.player1.score;
+                    const player2Score = gameState.player2.score;
+                    if (player1Score < player2Score) {
+                        gameState.roundWinner = 'player1';
+                        gameState.player1_wins = (gameState.player1_wins || 0) + 1;
+                    } else if (player2Score < player1Score) {
+                        gameState.roundWinner = 'player2';
+                        gameState.player2_wins = (gameState.player2_wins || 0) + 1;
+                    } else {
+                        gameState.roundWinner = 'tie';
+                    }
+                    gameState.roundState = 'complete';
+                }
+            }
+            this.currentGame.game_state = gameState;
+            console.debug('[MP] selectCategory applied', { playerSide, categoryName, score });
+            this.updateGameUI(gameState);
+            await this.updateGameState(gameState);
+            this.sendGameState();
+        } catch (e) {
+            console.error('[MP] selectCategory error', e);
         }
-        
-        // Apply locally and render immediately
-        this.currentGame.game_state = gameState;
-        try { console.debug('[MP] selectCategory', playerSide, categoryName, { score }); } catch (e) {}
-        this.updateGameUI(gameState);
-        
-        // Save to database (best-effort)
-        await this.updateGameState(gameState);
-        // Broadcast to peer
-        this.sendGameState();
     }
     
     async updateGameState(gameState) {

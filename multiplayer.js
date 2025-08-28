@@ -10,6 +10,8 @@ class MultiplayerManager {
         this.heartbeatInterval = null;
         this.pollInterval = null;
         this.gameChannel = null;
+        this.gameSyncInterval = null;
+        this.lastGameUpdatedAt = null;
         
         this.initializeMultiplayer();
     }
@@ -362,6 +364,7 @@ class MultiplayerManager {
             this.showMultiplayerGame();
             this.initializeGameState();
             this.joinGameChannel(this.currentGame.id);
+            this.startGameSync();
 
             // Mark current user as busy/in-game
             try {
@@ -433,6 +436,7 @@ class MultiplayerManager {
             const btn = document.getElementById(my + 'RollBtn');
             if (btn) btn.disabled = false;
         } catch (e) {}
+        this.lastGameUpdatedAt = this.currentGame.updated_at || new Date().toISOString();
     }
     
     async rollState(playerSide) {
@@ -974,6 +978,7 @@ class MultiplayerManager {
             this.initializeGameState();
             // Join broadcast channel so peers sync even without DB replication
             this.joinGameChannel(this.currentGame.id);
+            this.startGameSync();
         } catch (e) {
             console.error('processGameLink error:', e);
         }
@@ -1023,6 +1028,10 @@ class MultiplayerManager {
                 // Show notification for status changes
                 if (payload.new.status === 'accepted') {
                     this.showNotification(`🎉 ${payload.new.to_username} accepted your challenge!`, 'success');
+                    // Fallback: if I am the inviter, look up the active game row and join it
+                    if (payload.new.from_username === this.currentUser) {
+                        this.findAndJoinActiveGame(payload.new.from_username, payload.new.to_username);
+                    }
                 } else if (payload.new.status === 'declined') {
                     this.showNotification(`😔 ${payload.new.to_username} declined your challenge`, 'info');
                 } else if (payload.new.status === 'expired') {
@@ -1091,6 +1100,53 @@ class MultiplayerManager {
         });
     }
 
+    startGameSync() {
+        try {
+            if (this.gameSyncInterval) clearInterval(this.gameSyncInterval);
+            if (!this.currentGame) return;
+            this.lastGameUpdatedAt = this.currentGame.updated_at || null;
+            this.gameSyncInterval = setInterval(async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('multiplayer_games')
+                        .select('id, game_state, current_round, player1_wins, player2_wins, updated_at')
+                        .eq('id', this.currentGame.id)
+                        .single();
+                    if (!error && data) {
+                        if (!this.lastGameUpdatedAt || data.updated_at !== this.lastGameUpdatedAt) {
+                            this.lastGameUpdatedAt = data.updated_at;
+                            this.currentGame = { ...this.currentGame, ...data };
+                            const s = this.normalizeGameState(data.game_state);
+                            this.updateGameUI(s);
+                        }
+                    }
+                } catch (_) {}
+            }, 2000);
+        } catch (e) {}
+    }
+
+    async findAndJoinActiveGame(a, b) {
+        try {
+            const { data, error } = await supabase
+                .from('multiplayer_games')
+                .select('*')
+                .or(`and(player1.eq.${a},player2.eq.${b}),and(player1.eq.${b},player2.eq.${a})`)
+                .eq('status', 'active')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+            if (!error && data) {
+                this.currentGame = data;
+                this.showMultiplayerGame();
+                this.initializeGameState();
+                this.joinGameChannel(this.currentGame.id);
+                this.startGameSync();
+            }
+        } catch (e) {
+            console.error('findAndJoinActiveGame error', e);
+        }
+    }
+    
     sendGameState() {
         try {
             if (this.gameChannel && this.currentGame) {
@@ -1147,6 +1203,10 @@ class MultiplayerManager {
         if (this.gameChannel) {
             try { this.gameChannel.unsubscribe(); } catch (e) {}
             this.gameChannel = null;
+        }
+        if (this.gameSyncInterval) {
+            clearInterval(this.gameSyncInterval);
+            this.gameSyncInterval = null;
         }
     }
 }
